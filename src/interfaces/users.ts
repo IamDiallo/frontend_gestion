@@ -21,7 +21,7 @@ export interface User {
     is_active: boolean;
     zone: number | null;
   };
-  groups: Group[];
+  groups: Group[] | number[];
   role?: string; // For backward compatibility
   zone?: number;
   permissions?: string[];

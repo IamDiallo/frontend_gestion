@@ -36,6 +36,7 @@ import {
   VisibilityOff as VisibilityOffIcon,
   Group as GroupIcon,
   LocationOn as LocationOnIcon,
+  Password,
 } from '@mui/icons-material';
 import { UserAPI, GroupAPI, PermissionAPI, ZonesAPI } from '../services/api';
 import { usePermissions } from '../context/PermissionContext';
@@ -316,7 +317,8 @@ const UserManagement = () => {
             role: selectedUser.role,
             zone: selectedUser.zone, 
             is_profile_active: selectedUser.is_active,
-            groups: groupIds
+            groups: groupIds,
+            password: selectedUser.user?.password || '', // Use user object for password
           };
           
           // Add password only if it was provided and not empty
