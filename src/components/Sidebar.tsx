@@ -84,25 +84,25 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
       to: "/sales",
       icon: <ShoppingCart />,
       text: "Ventes",
-      requiredPermission: "view_sales"
+      requiredPermission: "view_sale"
     },
     {
       to: "/clients",
       icon: <People />,
       text: "Clients",
-      requiredPermission: "view_clients"
+      requiredPermission: "view_client"
     },
     {
       to: "/suppliers",
       icon: <LocalShipping />,
       text: "Suppliers",
-      requiredPermission: "view_suppliers"
+      requiredPermission: "view_supplier"
     },
     {
       to: "/products",
       icon: <Inventory />,
       text: "Produits",
-      requiredPermission: "view_products"
+      requiredPermission: "view_product"
     },
     {
       to: "/production",
@@ -114,7 +114,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
       to: "/inventory",
       icon: <Inventory />,
       text: "Inventaire",
-      requiredPermission: "view_stocks"
+      requiredPermission: "view_stock"
     },
     // Second section
     {
@@ -135,7 +135,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
       to: "/users",
       icon: <Group />,
       text: "Utilisateurs",
-      requiredPermission: "view_users"
+      requiredPermission: "view_user"
     },
     {
       to: "/settings",
