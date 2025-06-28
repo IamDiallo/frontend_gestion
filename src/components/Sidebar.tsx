@@ -15,6 +15,7 @@ import {
   Dashboard,
   ShoppingCart,
   People,
+  LocalShipping,
   Inventory,
   Storefront,
   Group,
@@ -90,6 +91,12 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
       icon: <People />,
       text: "Clients",
       requiredPermission: "view_clients"
+    },
+    {
+      to: "/suppliers",
+      icon: <LocalShipping />,
+      text: "Suppliers",
+      requiredPermission: "view_suppliers"
     },
     {
       to: "/products",
