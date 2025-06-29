@@ -95,7 +95,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
     {
       to: "/suppliers",
       icon: <LocalShipping />,
-      text: "Suppliers",
+      text: "Fournisseurs",
       requiredPermission: "view_supplier"
     },
     {
