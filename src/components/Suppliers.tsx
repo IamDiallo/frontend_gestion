@@ -20,7 +20,11 @@ import {
   Alert,
   CircularProgress,
   Chip,
-  InputAdornment
+  InputAdornment,
+  InputLabel,
+  FormControl,
+  Select,
+  MenuItem
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -28,33 +32,15 @@ import {
   Delete as DeleteIcon,
   Search as SearchIcon
 } from '@mui/icons-material';
+  import type { SelectChangeEvent } from '@mui/material/Select';
+
 import { useTheme } from '@mui/material/styles';
 import { Supplier } from '../interfaces/business';
 import PermissionGuard from './PermissionGuard';
 import { usePermissionCheck } from '../hooks/usePermissionCheck';
 import PermissionButton from './common/PermissionButton';
-
-// Mock data for suppliers
-const mockSuppliers: Supplier[] = [
-  {
-    id: 1,
-    name: 'Fournisseur ABC',
-    contact_person: 'Jean Dupont',
-    email: 'jean@abc.com',
-    phone: '+33 1 23 45 67 89',
-    address: '123 Rue de la Paix, Paris',
-    is_active: true
-  },
-  {
-    id: 2,
-    name: 'Société XYZ',
-    contact_person: 'Marie Martin',
-    email: 'marie@xyz.com',
-    phone: '+33 2 34 56 78 90',
-    address: '456 Avenue des Champs, Lyon',
-    is_active: true
-  }
-];
+import { SuppliersAPI } from '../services/api';
+import { AccountsAPI } from '../services/api';
 
 const initialFormState: Omit<Supplier, 'id'> = {
   name: '',
@@ -62,7 +48,8 @@ const initialFormState: Omit<Supplier, 'id'> = {
   email: '',
   phone: '',
   address: '',
-  is_active: true
+  is_active: true,
+  account: undefined // Add account field
 };
 
 const Suppliers = () => {
@@ -84,29 +71,51 @@ const Suppliers = () => {
     message: '',
     severity: 'success' as 'success' | 'error'
   });
+  const [availableAccounts, setAvailableAccounts] = useState<{ id: number; name: string }[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
 
   useEffect(() => {
+    const fetchSuppliers = async () => {
+      try {
+        setLoading(true);
+        const data = await SuppliersAPI.getAll();
+        setSuppliers(data);
+      } catch (err) {
+        console.error('Error loading clients:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchSuppliers();
   }, []);
 
-  const fetchSuppliers = async () => {
-    try {
-      setLoading(true);
-      // Simulate API call with our mock data
-      setTimeout(() => {
-        setSuppliers(mockSuppliers);
-        setLoading(false);
-      }, 1000);
-    } catch (error) {
-      console.error('Error loading suppliers:', error);
-      setSnackbar({
-        open: true,
-        message: 'Erreur lors du chargement des fournisseurs',
-        severity: 'error'
-      });
-      setLoading(false);
+  // Fetch available accounts of type "supplier"
+  useEffect(() => {
+    const fetchAvailableAccounts = async () => {
+      try {
+        setLoadingAccounts(true);
+        const accounts = await AccountsAPI.getByType('supplier');
+        // Filter out accounts already assigned to suppliers
+        const usedAccountIds = suppliers.filter(s => s.account !== undefined).map(s => s.account);
+        const available = accounts.filter(a => !usedAccountIds.includes(a.id));
+        // Only map id and name to match the expected type
+        setAvailableAccounts(
+          available.map((a: { id?: number; name?: string }) => ({
+            id: a.id ?? 0,
+            name: a.name ?? '',
+          }))
+        );
+      } catch (err) {
+        console.error('Error loading available accounts:', err);
+      } finally {
+        setLoadingAccounts(false);
+      }
+    };
+    if (openDialog) {
+      fetchAvailableAccounts();
     }
-  };
+  }, [openDialog, suppliers]);
 
   const handleOpenDialog = (supplier?: Supplier) => {
     if (supplier) {
@@ -116,7 +125,8 @@ const Suppliers = () => {
         email: supplier.email,
         phone: supplier.phone,
         address: supplier.address,
-        is_active: supplier.is_active
+        is_active: supplier.is_active,
+        account: supplier.account
       });      setEditMode(true);
       setCurrentId(supplier.id!);
     } else {
@@ -131,65 +141,62 @@ const Suppliers = () => {
     setOpenDialog(false);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | { name?: string; value: unknown }>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => ({ ...prev, [name as string]: value }));
+  };
+
+  const handleAccountChange = (e: SelectChangeEvent<number>) => {
+    setFormData(prev => ({ ...prev, account: e.target.value === '' ? undefined : Number(e.target.value) }));
   };
 
   const handleSubmit = async () => {
     try {
+      // Require account field
+      if (!formData.account) {
+        setSnackbar({
+          open: true,
+          message: 'Le compte fournisseur est requis',
+          severity: 'error'
+        });
+        return;
+      }
       if (editMode && currentId) {
-        // Mise à jour d'un fournisseur existant
-        // Remplacer par l'appel API réel
-        // await fetch(`/api/suppliers/${currentId}/`, {
-        //   method: 'PUT',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify(formData)
-        // });
-        
-        // Mise à jour locale en attendant l'API
-        setSuppliers(prev => 
-          prev.map(supplier => 
-            supplier.id === currentId ? { ...formData, id: currentId } : supplier
-          )
-        );
-        
+        // Update supplier via API
+        await SuppliersAPI.update(currentId, formData as Supplier);
+        const data = await SuppliersAPI.getAll();
+        setSuppliers(data);
         setSnackbar({
           open: true,
           message: 'Fournisseur mis à jour avec succès',
           severity: 'success'
         });
       } else {
-        // Création d'un nouveau fournisseur
-        // Remplacer par l'appel API réel
-        // const response = await fetch('/api/suppliers/', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify(formData)
-        // });
-        // const newSupplier = await response.json();
-        
-        // Création locale en attendant l'API
-        const newSupplier = {
-          ...formData,
-          id: suppliers.length > 0 ? Math.max(...suppliers.map(s => s.id)) + 1 : 1
-        };
-        
-        setSuppliers(prev => [...prev, newSupplier]);
-        
+        // Add supplier via API
+        await SuppliersAPI.create(formData as Supplier);
+        const data = await SuppliersAPI.getAll();
+        setSuppliers(data);
         setSnackbar({
           open: true,
           message: 'Fournisseur ajouté avec succès',
           severity: 'success'
         });
       }
-      
       handleCloseDialog();
-    } catch (error) {
-      console.error('Error saving supplier:', error);
+    } catch (error: any) {
+      let errorMessage = 'Erreur lors de l\'enregistrement du fournisseur';
+      if (error && error.response && error.response.data) {
+        const errorData = error.response.data;
+        if (typeof errorData === 'object') {
+          const errorMessages = Object.entries(errorData)
+            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : String(errors)}`)
+            .join('\n');
+          if (errorMessages) errorMessage = `Erreurs: ${errorMessages}`;
+        }
+      }
       setSnackbar({
         open: true,
-        message: 'Erreur lors de l\'enregistrement du fournisseur',
+        message: errorMessage,
         severity: 'error'
       });
     }
@@ -389,6 +396,34 @@ const Suppliers = () => {
                 rows={2}
                 sx={{ gridColumn: '1 / span 2' }}
               />
+              {/* Account select styled like Clients.tsx */}
+              <FormControl fullWidth required sx={{ gridColumn: '1 / span 2' }}>
+                <InputLabel id="account-label">Compte fournisseur</InputLabel>
+                <Select
+                  labelId="account-label"
+                  name="account"
+                  value={formData.account ?? ''}
+                  onChange={handleAccountChange}
+                  label="Compte fournisseur"
+                  MenuProps={{ PaperProps: { style: { maxHeight: 300 } } }}
+                >
+                  <MenuItem value="">Sélectionner un compte</MenuItem>
+                  {loadingAccounts ? (
+                    <MenuItem disabled>Chargement des comptes...</MenuItem>
+                  ) : availableAccounts && Array.isArray(availableAccounts) && availableAccounts.length === 0 ? (
+                    <MenuItem disabled>Aucun compte fournisseur disponible</MenuItem>
+                  ) : (
+                    availableAccounts && Array.isArray(availableAccounts) && availableAccounts.map(account => (
+                      <MenuItem key={account.id} value={account.id}>{account.name}</MenuItem>
+                    ))
+                  )}
+                </Select>
+                {availableAccounts && Array.isArray(availableAccounts) && availableAccounts.length === 0 && !loadingAccounts && (
+                  <Typography variant="caption" color="error" sx={{ mt: 1 }}>
+                    Aucun compte fournisseur disponible. Veuillez d'abord créer un compte de type fournisseur dans la section Trésorerie.
+                  </Typography>
+                )}
+              </FormControl>
             </Box>
           </DialogContent>
           <DialogActions sx={{ p: 2, pt: 0 }}>
