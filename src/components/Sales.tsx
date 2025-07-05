@@ -37,7 +37,16 @@ import {
   LinearProgress,
   styled
 } from '@mui/material';
-import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
+import { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
+import { 
+  StandardButton, 
+  StandardDataGrid, 
+  StandardTextField, 
+  StandardSelect, 
+  StandardAutocomplete,
+  StatusChip 
+} from './common';
+import { t } from '../utils/translations';
 import { 
   validateIntegerInput, 
   validateDecimalInput, 
@@ -195,91 +204,6 @@ const PaymentInfoCard = styled(Card)(() => ({
     boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
   },
 }));
-
-  // Utility functions for UI components
-const getStatusLabel = (status: string): string => {
-  switch (status) {
-    case 'pending': return 'En attente';
-    case 'confirmed': return 'Confirmée';
-    case 'payment_pending': return 'Paiement en attente';
-    case 'partially_paid': return 'Partiellement payée';
-    case 'paid': return 'Payée';
-    case 'shipped': return 'Expédiée';
-    case 'delivered': return 'Livrée';
-    case 'completed': return 'Terminée';
-    case 'cancelled': return 'Annulée';
-    default: return status;
-  }
-};
-
-const getStatusChipColor = (status: string): "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" => {
-  switch (status) {
-    case 'paid':
-    case 'completed': 
-      return "success";
-    case 'confirmed':
-    case 'delivered':
-      return "primary";
-    case 'partially_paid':
-    case 'payment_pending':
-      return "warning";
-    case 'cancelled':
-      return "error";
-    case 'shipped':
-      return "info";
-    case 'pending':
-    default:
-      return "default";
-  }
-};
-
-// Invoice status utility functions
-const getInvoiceStatusLabel = (status: string): string => {
-  switch (status) {
-    case 'draft': return 'Brouillon';
-    case 'sent': return 'Envoyée';
-    case 'paid': return 'Payée';
-    case 'overdue': return 'En retard';
-    case 'cancelled': return 'Annulée';
-    default: return status;
-  }
-};
-
-const getInvoiceStatusChipColor = (status: string): "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" => {
-  switch (status) {
-    case 'paid': return "success";
-    case 'sent': return "primary";
-    case 'overdue': return "error";
-    case 'cancelled': return "error";
-    case 'draft':
-    default: return "default";
-  }
-};
-
-// Quote status utility functions
-const getQuoteStatusLabel = (status: string): string => {
-  switch (status) {
-    case 'draft': return 'Brouillon';
-    case 'sent': return 'Envoyé';
-    case 'accepted': return 'Accepté';
-    case 'rejected': return 'Rejeté';
-    case 'expired': return 'Expiré';
-    case 'cancelled': return 'Annulé';
-    default: return status;
-  }
-};
-
-const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" => {
-  switch (status) {
-    case 'accepted': return "success";
-    case 'sent': return "primary";
-    case 'rejected': 
-    case 'expired':
-    case 'cancelled': return "error";
-    case 'draft':
-    default: return "default";
-  }
-};
 
   // QR Code scanner states
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -884,7 +808,15 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
   };
 
   // Add the formatCurrency function
-  const formatCurrency = (amount: number): string => {
+  const formatCurrency = (amount: number | null | undefined): string => {
+    // Handle NaN, null, and undefined values
+    if (amount == null || isNaN(amount)) {
+      return new Intl.NumberFormat('fr-GN', {
+        style: 'currency',
+        currency: 'GNF',
+        minimumFractionDigits: 0
+      }).format(0);
+    }
     return new Intl.NumberFormat('fr-GN', {
       style: 'currency',
       currency: 'GNF',
@@ -1229,10 +1161,10 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
 
    // Sales columns definition with proper value getters
   const salesColumns: GridColDef<ExtendedSale>[] = [
-    { field: 'reference', headerName: 'Référence', flex: 1 },
+    { field: 'reference', headerName: t('reference'), flex: 1 },
     { 
       field: 'client', 
-      headerName: 'Client', 
+      headerName: t('client'), 
       flex: 1,      valueGetter: (value, row) => {
         // Add safety check for undefined params
         if (!row) return 'N/A';        
@@ -1253,7 +1185,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
     },
     { 
       field: 'date', 
-      headerName: 'Date', 
+      headerName: t('date'), 
       flex: 1,      valueGetter: (value, row) => {
         if (!row || !row.date) return '';
         return new Date(row.date).toLocaleDateString();
@@ -1261,10 +1193,10 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
     },
     { 
       field: 'total_amount', 
-      headerName: 'Montant Total', 
+      headerName: t('totalAmount'), 
       flex: 1,
       valueGetter: (value, row) => {
-        if (!row || row.total_amount === undefined) return '';
+        if (!row || row.total_amount === undefined || row.total_amount === null) return '';
         return formatCurrency(row.total_amount);
       },
       renderCell: (params: GridRenderCellParams) => {
@@ -1289,7 +1221,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
     },
     { 
       field: 'paid_amount', 
-      headerName: 'Montant Payé', 
+      headerName: t('paidAmount'), 
       flex: 1,
       valueGetter: (value, row) => {
         if (!row || row.paid_amount === undefined) return '';
@@ -1342,7 +1274,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
     },
     {
       field: 'remaining_amount',
-      headerName: 'Reste à Payer',
+      headerName: t('remainingAmount'),
       flex: 1,
       valueGetter: (value, row) => {
         if (!row) return '';
@@ -1374,7 +1306,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
               {formatCurrency(remaining)}
             </Typography>
             {isOverdue && remaining > 0 && (
-              <Tooltip title="Paiement en retard">
+              <Tooltip title={t('overduePayment')}>
                 <Warning color="error" fontSize="small" />
               </Tooltip>
             )}
@@ -1384,7 +1316,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
     },
     { 
       field: 'status', 
-      headerName: 'Statut', 
+      headerName: t('status'), 
       flex: 1,
       renderCell: (params: GridRenderCellParams) => {
         // Add safety check for undefined row
@@ -1399,14 +1331,9 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
             height: '100%',
             gap: 1
           }}>
-            <Chip 
-              label={getStatusLabel(params.row.status)} 
-              color={getStatusChipColor(params.row.status)}
-              size="small"
-              variant="outlined"
-            />
+            <StatusChip status={params.row.status} />
             {isDeletable && (
-              <Tooltip title="Cette vente peut être supprimée en toute sécurité">
+              <Tooltip title={t('safeDeletable')}>
                 <Box 
                   sx={{ 
                     width: 8, 
@@ -1430,41 +1357,17 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
     },
     {
       field: 'payment_status',
-      headerName: 'Paiement',
+      headerName: t('payment'),
       flex: 1,
       renderCell: (params: GridRenderCellParams) => {
         if (!params.row || !params.row.payment_status) return <></>;
-        let color: "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" = "default";
-        let label = "Inconnu";
         
-        switch(params.row.payment_status) {
-          case 'paid':
-            color = "success";
-            label = "Payé";
-            break;
-          case 'partially_paid':
-            color = "warning";
-            label = "Partiellement payé";
-            break;
-          case 'unpaid':
-            color = "error";
-            label = "Non payé";
-            break;
-        }
-        
-        return (
-          <Chip 
-            label={label}
-            color={color}
-            size="small"
-            variant="outlined"
-          />
-        );
+        return <StatusChip status={params.row.payment_status} />;
       }
     },
     {
       field: 'actions',
-      headerName: 'Actions',
+      headerName: t('actions'),
       flex: 1,
       sortable: false,      renderCell: (params: GridRenderCellParams) => {
         // Add safety check for undefined row
@@ -1474,7 +1377,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
         
           return (
           <Box>
-            <Tooltip title="Éditer">
+            <Tooltip title={t('edit')}>
               <IconButton 
                 size="small" 
                 color="primary" 
@@ -1488,7 +1391,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
               </IconButton>
             </Tooltip>
             {canDelete && (
-              <Tooltip title="Supprimer">
+              <Tooltip title={t('delete')}>
                 <IconButton 
                   size="small" 
                   color="error"
@@ -1502,15 +1405,6 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
                 </IconButton>
               </Tooltip>
             )}
-            <Tooltip title="Voir détails">
-              <IconButton 
-                size="small" 
-                color="info"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <VisibilityIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
           </Box>
         );
       }
@@ -1551,7 +1445,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
       headerName: 'Montant', 
       flex: 1,
       valueGetter: (value, row) => {
-        if (!row || row.amount === undefined) return '';
+        if (!row || row.amount === undefined || row.amount === null) return '';
         return formatCurrency(row.amount);
       }
     },    { 
@@ -1559,7 +1453,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
       headerName: 'Payé', 
       flex: 1,
       valueGetter: (value, row) => {
-        if (!row || row.paid_amount === undefined) return '';
+        if (!row || row.paid_amount === undefined || row.paid_amount === null) return '';
         return formatCurrency(row.paid_amount);
       }
     },    { 
@@ -1567,7 +1461,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
       headerName: 'Solde', 
       flex: 1,
       valueGetter: (value, row) => {
-        if (!row || row.balance === undefined) return '';
+        if (!row || row.balance === undefined || row.balance === null) return '';
         return formatCurrency(row.balance);
       }
     },
@@ -1576,15 +1470,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
       headerName: 'Statut', 
       flex: 1,
       renderCell: (params: GridRenderCellParams) => {
-        if (!params.row || !params.row.status) return <></>;
-        return (
-          <Chip 
-            label={getInvoiceStatusLabel(params.row.status)} 
-            color={getInvoiceStatusChipColor(params.row.status)}
-            size="small"
-            variant="outlined"
-          />
-        );
+        if (!params.row || !params.row.status) return <></>;        return <StatusChip status={params.row.status} />;
       }
     },
     {
@@ -1596,13 +1482,6 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
         if (!params.row) return <></>;
         return (
           <Stack direction="row" spacing={1} justifyContent="flex-end">
-            <IconButton 
-              color="info" 
-              size="small"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <VisibilityIcon fontSize="small" />
-            </IconButton>
             <IconButton 
               color="primary" 
               size="small"
@@ -1670,7 +1549,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
       field: 'total_amount', 
       headerName: 'Montant', 
       flex: 1,      valueGetter: (value, row) => {
-        if (!row || row.total_amount === undefined) return '';
+        if (!row || row.total_amount === undefined || row.total_amount === null) return '';
         return formatCurrency(row.total_amount);
       }
     },
@@ -1679,15 +1558,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
       headerName: 'Statut', 
       flex: 1,
       renderCell: (params: GridRenderCellParams) => {
-        if (!params.row || !params.row.status) return <></>;
-        return (
-          <Chip 
-            label={getQuoteStatusLabel(params.row.status)} 
-            color={getQuoteStatusChipColor(params.row.status)}
-            size="small"
-            variant="outlined"
-          />
-        );
+        if (!params.row || !params.row.status) return <></>;        return <StatusChip status={params.row.status} />;
       }
     },
     {
@@ -1699,13 +1570,6 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
         if (!params.row) return <></>;
         return (
           <Stack direction="row" spacing={1} justifyContent="flex-end">
-            <IconButton 
-              color="info" 
-              size="small"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <VisibilityIcon fontSize="small" />
-            </IconButton>
             <IconButton 
               color="primary" 
               size="small"
@@ -2196,46 +2060,25 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
                   <Alert severity="error" sx={{ mb: 3 }}>
                     {error}
                   </Alert>
-                )}                <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>                  <DataGrid
-                    rows={filteredSales}
-                    columns={salesColumns}
-                    pagination
-                    paginationModel={salesPaginationModel}
-                    onPaginationModelChange={setSalesPaginationModel}
-                    pageSizeOptions={[10, 25, 50]}
-                    checkboxSelection={false}
-                    disableRowSelectionOnClick
-                    onRowClick={(params) => {
-                      setEditingSale(params.row as ExtendedSale);
-                      setShowEditModal(true);
-                      // Fetch sale items when a sale is clicked
-                      fetchSaleItems(params.row.id);
-                    }}
-                    loading={loading}
-                    sx={{
-                      border: 'none',
-                      '& .MuiDataGrid-columnHeaders': {
-                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
-                        color: theme => theme.palette.text.primary,
-                        fontWeight: 'bold'
-                      },
-                      '& .MuiDataGrid-cell': {
-                        borderBottom: '1px solid',
-                        borderColor: 'divider',
-                        fontSize: '0.875rem'
-                      },
-                      '& .MuiDataGrid-row:hover': {
-                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
-                        cursor: 'pointer'
-                      }
-                    }}
-                    getRowId={(row) => {
-                      // Safely handle undefined or null rows
-                      if (!row || row.id === undefined) return Math.random();
-                      return row.id;
-                    }}
-                  />
-                </Box>
+                )}
+                <StandardDataGrid
+                  rows={filteredSales}
+                  columns={salesColumns}
+                  paginationModel={salesPaginationModel}
+                  onPaginationModelChange={setSalesPaginationModel}
+                  onRowClick={(params) => {
+                    setEditingSale(params.row as ExtendedSale);
+                    setShowEditModal(true);
+                    // Fetch sale items when a sale is clicked
+                    fetchSaleItems(params.row.id);
+                  }}
+                  loading={loading}
+                  getRowId={(row) => {
+                    // Safely handle undefined or null rows
+                    if (!row || row.id === undefined) return Math.random();
+                    return row.id;
+                  }}
+                />
               </>
             )}
           </TabPanel>
@@ -2357,41 +2200,18 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
                     {error}
                   </Alert>
                 )}
-                <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>
-                  <DataGrid
-                    rows={filteredInvoices}
-                    columns={invoiceColumns}
-                    pagination
-                    paginationModel={invoicePaginationModel}
-                    onPaginationModelChange={setInvoicePaginationModel}
-                    pageSizeOptions={[10, 25, 50]}
-                    checkboxSelection={false}
-                    disableRowSelectionOnClick
-                    loading={invoiceLoading}
-                    sx={{
-                      border: 'none',
-                      '& .MuiDataGrid-columnHeaders': {
-                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
-                        color: theme => theme.palette.text.primary,
-                        fontWeight: 'bold'
-                      },
-                      '& .MuiDataGrid-cell': {
-                        borderBottom: '1px solid',
-                        borderColor: 'divider',
-                        fontSize: '0.875rem'
-                      },
-                      '& .MuiDataGrid-row:hover': {
-                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
-                        cursor: 'pointer'
-                      }
-                    }}
-                    getRowId={(row) => {
-                      // Safely handle undefined or null rows
-                      if (!row || row.id === undefined) return Math.random();
-                      return row.id;
-                    }}
-                  />
-                </Box>
+                <StandardDataGrid
+                  rows={filteredInvoices}
+                  columns={invoiceColumns}
+                  paginationModel={invoicePaginationModel}
+                  onPaginationModelChange={setInvoicePaginationModel}
+                  loading={invoiceLoading}
+                  getRowId={(row) => {
+                    // Safely handle undefined or null rows
+                    if (!row || row.id === undefined) return Math.random();
+                    return row.id;
+                  }}
+                />
               </>
             )}
           </TabPanel>
@@ -2513,41 +2333,18 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
                     {error}
                   </Alert>
                 )}
-                <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>
-                  <DataGrid
-                    rows={filteredQuotes}
-                    columns={quoteColumns}
-                    pagination
-                    paginationModel={quotePaginationModel}
-                    onPaginationModelChange={setQuotePaginationModel}
-                    pageSizeOptions={[10, 25, 50]}
-                    checkboxSelection={false}
-                    disableRowSelectionOnClick
-                    loading={quoteLoading}
-                    sx={{
-                      border: 'none',
-                      '& .MuiDataGrid-columnHeaders': {
-                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
-                        color: theme => theme.palette.text.primary,
-                        fontWeight: 'bold'
-                      },
-                      '& .MuiDataGrid-cell': {
-                        borderBottom: '1px solid',
-                        borderColor: 'divider',
-                        fontSize: '0.875rem'
-                      },
-                      '& .MuiDataGrid-row:hover': {
-                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
-                        cursor: 'pointer'
-                      }
-                    }}
-                    getRowId={(row) => {
-                      // Safely handle undefined or null rows
-                      if (!row || row.id === undefined) return Math.random();
-                      return row.id;
-                    }}
-                  />
-                </Box>
+                <StandardDataGrid
+                  rows={filteredQuotes}
+                  columns={quoteColumns}
+                  paginationModel={quotePaginationModel}
+                  onPaginationModelChange={setQuotePaginationModel}
+                  loading={quoteLoading}
+                  getRowId={(row) => {
+                    // Safely handle undefined or null rows
+                    if (!row || row.id === undefined) return Math.random();
+                    return row.id;
+                  }}
+                />
               </>
             )}
           </TabPanel>
@@ -2730,9 +2527,8 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
             <ShoppingCart sx={{ mr: 1, color: 'primary.main' }} />
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
               <Typography variant="h5">Modifier la vente {editingSale?.reference}</Typography>
-              <Chip 
-                label={getStatusLabel(editingSale?.status || 'pending')} 
-                color={getStatusChipColor(editingSale?.status || 'pending')}
+              <StatusChip 
+                status={editingSale?.status || 'pending'}
                 size="medium"
               />
             </Box>
@@ -2992,9 +2788,8 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
                     
                     <Box sx={{ mb: 2 }}>
                       <Typography variant="body2" color="text.secondary" gutterBottom>
-                        Statut actuel: <Chip 
-                          label={getStatusLabel(editingSale.status)} 
-                          color={getStatusChipColor(editingSale.status)}
+                        Statut actuel: <StatusChip 
+                          status={editingSale.status}
                           size="small"
                           sx={{ ml: 1 }}
                         />
@@ -3063,7 +2858,7 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
                               return { 
                                 icon: null, 
                                 color: 'primary', 
-                                label: getStatusLabel(transition as string) 
+                                label: t(transition as string) 
                               };
                           }
                         };
@@ -3260,9 +3055,8 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
                         </Grid>
                         <Grid item xs={6}>
                           <Typography variant="body2" color="text.secondary">Statut:</Typography>
-                          <Chip 
-                            label={getStatusLabel(selectedSale.status)} 
-                            color={getStatusChipColor(selectedSale.status)}
+                          <StatusChip 
+                            status={selectedSale.status}
                             size="small"
                           />
                         </Grid>
@@ -3333,9 +3127,8 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
                 Modifier la facture {editingInvoice?.reference}
               </Box>
               {editingInvoice && (
-                <Chip 
-                  label={getInvoiceStatusLabel(editingInvoice.status)} 
-                  color={getInvoiceStatusChipColor(editingInvoice.status)}
+                <StatusChip 
+                  status={editingInvoice.status}
                   size="medium"
                 />
               )}
@@ -3512,9 +3305,8 @@ const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secon
                 Modifier le devis {editingQuote?.reference}
               </Box>
               {editingQuote && (
-                <Chip 
-                  label={getQuoteStatusLabel(editingQuote.status)} 
-                  color={getQuoteStatusChipColor(editingQuote.status)}
+                <StatusChip 
+                  status={editingQuote.status}
                   size="medium"
                 />
               )}

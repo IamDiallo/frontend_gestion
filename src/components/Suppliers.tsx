@@ -3,42 +3,34 @@ import {
   Box,
   Typography,
   Paper,
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   IconButton,
   Snackbar,
   Alert,
   CircularProgress,
-  Chip,
-  InputAdornment,
-  InputLabel,
-  FormControl,
-  Select,
-  MenuItem
+  InputAdornment
 } from '@mui/material';
+import { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
+import { 
+  StandardButton, 
+  StandardDataGrid, 
+  StandardTextField, 
+  StatusChip,
+  ContactDialog 
+} from './common';
+import { t } from '../utils/translations';
 import { 
   Add as AddIcon, 
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Search as SearchIcon
+  Search as SearchIcon,
+  Phone as PhoneIcon,
+  Email as EmailIcon,
+  LocationOn as LocationIcon
 } from '@mui/icons-material';
-  import type { SelectChangeEvent } from '@mui/material/Select';
 
-import { useTheme } from '@mui/material/styles';
 import { Supplier } from '../interfaces/business';
 import PermissionGuard from './PermissionGuard';
 import { usePermissionCheck } from '../hooks/usePermissionCheck';
-import PermissionButton from './common/PermissionButton';
 import { SuppliersAPI } from '../services/api';
 import { AccountsAPI } from '../services/api';
 
@@ -49,11 +41,10 @@ const initialFormState: Omit<Supplier, 'id'> = {
   phone: '',
   address: '',
   is_active: true,
-  account: undefined // Add account field
+  account: undefined
 };
 
 const Suppliers = () => {
-  const theme = useTheme();
   const { canPerform } = usePermissionCheck();
 
   const canEditSupplier = canPerform('change_supplier');
@@ -73,6 +64,112 @@ const Suppliers = () => {
   });
   const [availableAccounts, setAvailableAccounts] = useState<{ id: number; name: string }[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
+
+  // Pagination state for DataGrid
+  const [paginationModel, setPaginationModel] = useState({
+    page: 0,
+    pageSize: 10,
+  });
+
+  // Suppliers DataGrid columns
+  const suppliersColumns: GridColDef[] = [
+    {
+      field: 'name',
+      headerName: t('company'),
+      flex: 1.2,
+      renderCell: (params: GridRenderCellParams) => (
+        <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+          {params.row.name}
+        </Typography>
+      )
+    },
+    {
+      field: 'contact_person',
+      headerName: t('contactPerson'),
+      flex: 1,
+      renderCell: (params: GridRenderCellParams) => (
+        <Typography variant="body2">
+          {params.row.contact_person}
+        </Typography>
+      )
+    },
+    {
+      field: 'phone',
+      headerName: t('phone'),
+      flex: 1,
+      renderCell: (params: GridRenderCellParams) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PhoneIcon fontSize="small" color="action" />
+          <Typography variant="body2">{params.row.phone}</Typography>
+        </Box>
+      )
+    },
+    {
+      field: 'email',
+      headerName: t('email'),
+      flex: 1.2,
+      renderCell: (params: GridRenderCellParams) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <EmailIcon fontSize="small" color="action" />
+          <Typography variant="body2">{params.row.email}</Typography>
+        </Box>
+      )
+    },
+    {
+      field: 'address',
+      headerName: t('address'),
+      flex: 1.3,
+      renderCell: (params: GridRenderCellParams) => (
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+          <LocationIcon fontSize="small" color="action" sx={{ mt: 0.25 }} />
+          <Typography variant="body2">{params.row.address}</Typography>
+        </Box>
+      )
+    },
+    {
+      field: 'is_active',
+      headerName: t('status'),
+      flex: 0.7,
+      renderCell: (params: GridRenderCellParams) => (
+        <StatusChip 
+          status={params.row.is_active ? 'active' : 'inactive'}
+        />
+      )
+    },
+    {
+      field: 'actions',
+      headerName: t('actions'),
+      flex: 0.8,
+      sortable: false,
+      renderCell: (params: GridRenderCellParams) => (
+        <Box>
+          <IconButton 
+            color="primary" 
+            size="small" 
+            sx={{ mr: 1 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenDialog(params.row);
+            }}
+            disabled={!canEditSupplier}
+          >
+            <EditIcon fontSize="small" />
+          </IconButton>
+          <IconButton 
+            color="error" 
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDelete(params.row.id!);
+            }}
+            disabled={!canDeleteSupplier}
+          >
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      )
+    }
+  ];
 
   useEffect(() => {
     const fetchSuppliers = async () => {
@@ -141,13 +238,13 @@ const Suppliers = () => {
     setOpenDialog(false);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | { name?: string; value: unknown }>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name as string]: value }));
+  const handleAccountChange = (value: number | '') => {
+    setFormData(prev => ({ ...prev, account: value === '' ? undefined : value }));
   };
 
-  const handleAccountChange = (e: SelectChangeEvent<number>) => {
-    setFormData(prev => ({ ...prev, account: e.target.value === '' ? undefined : Number(e.target.value) }));
+  // Handle form data changes for ContactDialog
+  const handleFormDataChange = (data: typeof formData) => {
+    setFormData(data);
   };
 
   const handleSubmit = async () => {
@@ -183,9 +280,11 @@ const Suppliers = () => {
         });
       }
       handleCloseDialog();
-    } catch (error: any) {
+    } catch (error: unknown) {
       let errorMessage = 'Erreur lors de l\'enregistrement du fournisseur';
-      if (error && error.response && error.response.data) {
+      if (error && typeof error === 'object' && 'response' in error && 
+          error.response && typeof error.response === 'object' && 
+          'data' in error.response && error.response.data) {
         const errorData = error.response.data;
         if (typeof errorData === 'object') {
           const errorMessages = Object.entries(errorData)
@@ -239,6 +338,13 @@ const Suppliers = () => {
     supplier.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Handle row click to edit supplier
+  const handleRowClick = (params: { row: Supplier }) => {
+    if (canEditSupplier) {
+      handleOpenDialog(params.row);
+    }
+  };
+
   return (
     <PermissionGuard requiredPermission="view_suppliers" fallbackPath="/">
       <Box>
@@ -253,10 +359,8 @@ const Suppliers = () => {
 
         <Paper sx={{ p: 3, mb: 4 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-            <TextField
-              label="Rechercher"
-              variant="outlined"
-              size="small"
+            <StandardTextField
+              label={t('search')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               sx={{ width: '300px' }}
@@ -267,14 +371,15 @@ const Suppliers = () => {
                   </InputAdornment>
                 ),
               }}
-            />            <PermissionButton
+            />
+            <StandardButton
               variant="contained"
               startIcon={<AddIcon />}
               onClick={() => handleOpenDialog()}
-              requiredPermission="add_supplier"
+              disabled={!canPerform('add_supplier')}
             >
-              Ajouter un fournisseur
-            </PermissionButton>
+              {t('addSupplier')}
+            </StandardButton>
           </Box>
 
           {/* Suppliers listing */}
@@ -283,172 +388,37 @@ const Suppliers = () => {
               <CircularProgress />
             </Box>
           ) : (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Nom</TableCell>
-                    <TableCell>Contact</TableCell>
-                    <TableCell>Email</TableCell>
-                    <TableCell>Téléphone</TableCell>
-                    <TableCell>Statut</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredSuppliers.map((supplier) => (
-                    <TableRow key={supplier.id}>
-                      <TableCell>{supplier.name}</TableCell>
-                      <TableCell>{supplier.contact_person}</TableCell>
-                      <TableCell>{supplier.email}</TableCell>
-                      <TableCell>{supplier.phone}</TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={supplier.is_active ? 'Actif' : 'Inactif'} 
-                          color={supplier.is_active ? 'success' : 'error'}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell align="right">                        <IconButton
-                          color="primary"
-                          size="small"
-                          onClick={() => handleOpenDialog(supplier)}
-                          disabled={!canEditSupplier}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          color="error"
-                          size="small"
-                          onClick={() => handleDelete(supplier.id!)}
-                          disabled={!canDeleteSupplier}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            <StandardDataGrid
+              rows={filteredSuppliers}
+              columns={suppliersColumns}
+              paginationModel={paginationModel}
+              onPaginationModelChange={setPaginationModel}
+              loading={loading}
+              getRowId={(row) => row.id || Math.random()}
+              onRowClick={handleRowClick}
+              sx={{
+                minHeight: 400,
+                '& .MuiDataGrid-row': {
+                  cursor: 'pointer'
+                }
+              }}
+            />
           )}
         </Paper>
 
         {/* Add/Edit Supplier Dialog */}
-        <Dialog 
-          open={openDialog} 
-          onClose={handleCloseDialog} 
-          maxWidth="md" 
-          fullWidth
-          PaperProps={{
-            sx: {
-              borderRadius: 3,
-              boxShadow: '0 8px 30px rgba(0,0,0,0.12)'
-            }
-          }}
-        >
-          <DialogTitle sx={{ 
-            backgroundColor: theme.palette.primary.main,
-            color: 'white',
-            fontWeight: 'bold'
-          }}>
-            {editMode ? 'Modifier le fournisseur' : 'Ajouter un fournisseur'}
-          </DialogTitle>
-          <DialogContent sx={{ p: 3, mt: 1 }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-              <TextField
-                name="name"
-                label="Nom du fournisseur"
-                fullWidth
-                value={formData.name}
-                onChange={handleInputChange}
-                required
-              />
-              <TextField
-                name="contact_person"
-                label="Personne de contact"
-                fullWidth
-                value={formData.contact_person}
-                onChange={handleInputChange}
-              />
-              <TextField
-                name="email"
-                label="Email"
-                fullWidth
-                value={formData.email}
-                onChange={handleInputChange}
-                type="email"
-              />
-              <TextField
-                name="phone"
-                label="Téléphone"
-                fullWidth
-                value={formData.phone}
-                onChange={handleInputChange}
-              />
-              <TextField
-                name="address"
-                label="Adresse"
-                fullWidth
-                value={formData.address}
-                onChange={handleInputChange}
-                multiline
-                rows={2}
-                sx={{ gridColumn: '1 / span 2' }}
-              />
-              {/* Account select styled like Clients.tsx */}
-              <FormControl fullWidth required sx={{ gridColumn: '1 / span 2' }}>
-                <InputLabel id="account-label">Compte fournisseur</InputLabel>
-                <Select
-                  labelId="account-label"
-                  name="account"
-                  value={formData.account ?? ''}
-                  onChange={handleAccountChange}
-                  label="Compte fournisseur"
-                  MenuProps={{ PaperProps: { style: { maxHeight: 300 } } }}
-                >
-                  <MenuItem value="">Sélectionner un compte</MenuItem>
-                  {loadingAccounts ? (
-                    <MenuItem disabled>Chargement des comptes...</MenuItem>
-                  ) : availableAccounts && Array.isArray(availableAccounts) && availableAccounts.length === 0 ? (
-                    <MenuItem disabled>Aucun compte fournisseur disponible</MenuItem>
-                  ) : (
-                    availableAccounts && Array.isArray(availableAccounts) && availableAccounts.map(account => (
-                      <MenuItem key={account.id} value={account.id}>{account.name}</MenuItem>
-                    ))
-                  )}
-                </Select>
-                {availableAccounts && Array.isArray(availableAccounts) && availableAccounts.length === 0 && !loadingAccounts && (
-                  <Typography variant="caption" color="error" sx={{ mt: 1 }}>
-                    Aucun compte fournisseur disponible. Veuillez d'abord créer un compte de type fournisseur dans la section Trésorerie.
-                  </Typography>
-                )}
-              </FormControl>
-            </Box>
-          </DialogContent>
-          <DialogActions sx={{ p: 2, pt: 0 }}>
-            <Button 
-              onClick={handleCloseDialog}
-              sx={{ borderRadius: '20px' }}
-            >
-              Annuler
-            </Button>
-            <Button 
-              onClick={handleSubmit} 
-              variant="contained"
-              disabled={!formData.name}
-              sx={{ 
-                borderRadius: '20px',
-                boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
-                '&:hover': {
-                  boxShadow: '0 6px 15px rgba(0,0,0,0.15)'
-                }
-              }}
-            >
-              {editMode ? 'Mettre à jour' : 'Ajouter'}
-            </Button>
-          </DialogActions>
-        </Dialog>
+        <ContactDialog
+          open={openDialog}
+          editMode={editMode}
+          contactType="supplier"
+          formData={formData}
+          availableAccounts={availableAccounts}
+          loadingAccounts={loadingAccounts}
+          onClose={handleCloseDialog}
+          onSubmit={handleSubmit}
+          onFormDataChange={handleFormDataChange}
+          onAccountChange={handleAccountChange}
+        />
 
         <Snackbar 
           open={snackbar.open} 

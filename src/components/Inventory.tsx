@@ -2,32 +2,24 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
-  Paper,
   Tabs,
   Tab,
-  Button,
-  Grid,
-  TextField,
-  IconButton,
   Tooltip,
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   CircularProgress,
   Alert,
   Snackbar,
+  MenuItem,
+  SelectChangeEvent,
+  TextField,
+  Button,
   FormControl,
   InputLabel,
   Select,
-  MenuItem,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  SelectChangeEvent, // Add SelectChangeEvent
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -42,18 +34,40 @@ import {
   History as HistoryIcon,
 } from '@mui/icons-material';
 import { DataGrid, GridRenderCellParams } from '@mui/x-data-grid';
+
+// Imports standardisés
+import {
+  StandardButton,
+  StandardDataGrid,
+  StandardTextField,
+  StandardSelect,
+  StatusChip,
+  getStandardFilterBoxStyles,
+  getStandardFilterGroupStyles,
+  getStandardActionGroupStyles,
+  getStandardPrimaryButtonStyles,
+  getStandardSecondaryButtonStyles,
+  GENERAL_TRANSLATIONS,
+  INVENTORY_TRANSLATIONS,
+  STATUS_TRANSLATIONS,
+  FILTER_TRANSLATIONS,
+  CONTACTS_TRANSLATIONS,
+  InventoryDialog,
+  InventoryOperationType,
+  InventoryDialogFormData,
+  InventoryDialogStatus
+} from './common';
+
 import {
   InventoryAPI, ZonesAPI, ProductsAPI, SuppliersAPI
 } from '../services/api';
 import { Stock, StockSupply, StockTransfer, Inventory as InventoryType, StockMovement, CreateInventory, UpdateInventory } from '../interfaces/inventory';
-import { Zone, Supplier } from '../interfaces/business'; // Import from business interfaces
-import { Product } from '../interfaces/products'; // Import Product from products interface
+import { Zone, Supplier } from '../interfaces/business';
+import { Product } from '../interfaces/products';
 import { usePermissions } from '../context/PermissionContext';
-import { Html5Qrcode } from 'html5-qrcode'; // Correct the import path
-import { AxiosError } from 'axios'; // Add AxiosError import for proper error handling
+import { Html5Qrcode } from 'html5-qrcode';
 import {
   validateIntegerInput,
-  validateDecimalInput,
   formatNumberDisplay,
   getValidationError
 } from '../utils/inputValidation';
@@ -108,40 +122,29 @@ const InventoryManagement: React.FC = () => {
     severity: 'info'
   });
   
-  // New state for supply dialog
-  const [supplyDialogOpen, setSupplyDialogOpen] = useState(false);
-  const [selectedSupply, setSelectedSupply] = useState<StockSupply | null>(null);
-  // Update supplyItems state structure
-  const [supplyItems, setSupplyItems] = useState<{product: number, quantity: number, unit_price: number, total_price: number}[]>([]);
-  const [currentSupplyProduct, setCurrentSupplyProduct] = useState<Product | null>(null);
-  const [currentSupplyQuantity, setCurrentSupplyQuantity] = useState<number>(1);
-  // Unit price will now be potentially auto-filled
-  const [currentSupplyUnitPrice, setCurrentSupplyUnitPrice] = useState<number>(0);
-  const [selectedSupplier, setSelectedSupplier] = useState<number | ''>('');
+  // Unified dialog state
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogOperation, setDialogOperation] = useState<InventoryOperationType>('supply');
+  const [editMode, setEditMode] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<StockSupply | StockTransfer | InventoryType | null>(null);
+  
+  // Unified dialog form data
+  const [dialogFormData, setDialogFormData] = useState<InventoryDialogFormData>({
+    items: [],
+    status: 'pending' as InventoryDialogStatus,
+    supplier: '',
+    zone: '',
+    sourceZone: '',
+    targetZone: '',
+    inventoryZone: '',
+    currentProduct: null,
+    currentQuantity: 1,
+    currentUnitPrice: 0,
+  });
+
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<{id: number, type: 'supply' | 'transfer' | 'inventory'} | null>(null);
-  const [supplyStatus, setSupplyStatus] = useState<StockSupply['status']>('pending');
-
-  // New transfer dialog states and handlers
-  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
-  const [selectedTransfer, setSelectedTransfer] = useState<StockTransfer | null>(null);
-  const [transferItems, setTransferItems] = useState<{product: number, quantity: number, unit_price: number, total_price: number}[]>([]);
-  const [currentTransferProduct, setCurrentTransferProduct] = useState<Product | null>(null);
-  const [currentTransferQuantity, setCurrentTransferQuantity] = useState<number>(1);
-  const [currentTransferUnitPrice, setCurrentTransferUnitPrice] = useState<number>(0);
-  const [sourceZone, setSourceZone] = useState<number | ''>('');
-  const [targetZone, setTargetZone] = useState<number | ''>('');
-  const [transferStatus, setTransferStatus] = useState<StockTransfer['status']>('pending');
-
-  // New inventory count dialog states and handlers
-  const [inventoryDialogOpen, setInventoryDialogOpen] = useState(false);
-  const [selectedInventory, setSelectedInventory] = useState<InventoryType | null>(null);
-  const [inventoryItems, setInventoryItems] = useState<{product: number, quantity: number, unit_price: number, total_price: number}[]>([]);
-  const [currentInventoryProduct, setCurrentInventoryProduct] = useState<Product | null>(null);
-  const [currentInventoryQuantity, setCurrentInventoryQuantity] = useState<number>(1);
-  const [currentInventoryUnitPrice, setCurrentInventoryUnitPrice] = useState<number>(0);
-  const [inventoryZone, setInventoryZone] = useState<number | ''>('');
-  const [inventoryStatus, setInventoryStatus] = useState<InventoryType['status']>('draft');
+  const [itemToDelete, setItemToDelete] = useState<{id: number, type: 'supply' | 'transfer' | 'inventory', name?: string} | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // QR Code scanner states
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -187,12 +190,8 @@ const InventoryManagement: React.FC = () => {
 
   // Validation error states
   const [scannedQuantityError, setScannedQuantityError] = useState<string>('');
-  const [supplyQuantityError, setSupplyQuantityError] = useState<string>('');
-  const [supplyPriceError, setSupplyPriceError] = useState<string>('');
-  const [transferQuantityError, setTransferQuantityError] = useState<string>('');
-  const [transferPriceError, setTransferPriceError] = useState<string>('');
-  const [inventoryQuantityError, setInventoryQuantityError] = useState<string>('');
-  const [inventoryPriceError, setInventoryPriceError] = useState<string>('');
+  const [dialogQuantityError, setDialogQuantityError] = useState<string>('');
+  const [dialogPriceError, setDialogPriceError] = useState<string>('');
 
 
   // Add this function definition
@@ -251,7 +250,7 @@ const InventoryManagement: React.FC = () => {
 
   // Enhanced form validation
   const validateSupplyForm = (): boolean => {
-    if (!selectedSupplier) {
+    if (!dialogFormData.supplier) {
       setSnackbar({
         open: true,
         message: 'Veuillez sélectionner un fournisseur',
@@ -260,7 +259,7 @@ const InventoryManagement: React.FC = () => {
       return false;
     }
     
-    if (supplyItems.length === 0) {
+    if (dialogFormData.items.length === 0) {
       setSnackbar({
         open: true,
         message: 'Veuillez ajouter au moins un produit',
@@ -274,7 +273,7 @@ const InventoryManagement: React.FC = () => {
 
   // Enhanced transfer form validation
   const validateTransferForm = (): boolean => {
-    if (!sourceZone) {
+    if (!dialogFormData.sourceZone) {
       setSnackbar({
         open: true,
         message: 'Veuillez sélectionner un emplacement source',
@@ -283,7 +282,7 @@ const InventoryManagement: React.FC = () => {
       return false;
     }
     
-    if (!targetZone) {
+    if (!dialogFormData.targetZone) {
       setSnackbar({
         open: true,
         message: 'Veuillez sélectionner un emplacement cible',
@@ -292,7 +291,7 @@ const InventoryManagement: React.FC = () => {
       return false;
     }
     
-    if (sourceZone === targetZone) {
+    if (dialogFormData.sourceZone === dialogFormData.targetZone) {
       setSnackbar({
         open: true,
         message: 'Les emplacements source et cible doivent être différents',
@@ -301,7 +300,7 @@ const InventoryManagement: React.FC = () => {
       return false;
     }
     
-    if (transferItems.length === 0) {
+    if (dialogFormData.items.length === 0) {
       setSnackbar({
         open: true,
         message: 'Veuillez ajouter au moins un produit',
@@ -313,20 +312,186 @@ const InventoryManagement: React.FC = () => {
     return true;
   };
 
-  // New supply dialog open handler for creation
-  const handleOpenSupplyDialog = () => {
-    setSupplyItems([]);
-    setCurrentSupplyProduct(null);
-    setCurrentSupplyQuantity(1);
-    setCurrentSupplyUnitPrice(0); // Reset unit price initially
-    setSelectedSupplier(''); // Reset supplier
-    setSelectedZone(selectedZone || zones[0]?.id || ''); // Default to current or first zone
-    setSelectedSupply(null); // Ensure no supply is selected for creation
-    setSupplyStatus('pending'); // Reset status to default for creation
-    // Reset error states
-    setSupplyQuantityError('');
-    setSupplyPriceError('');
-    setSupplyDialogOpen(true);
+  // Validate inventory form
+  const validateInventoryForm = (): boolean => {
+    if (!dialogFormData.inventoryZone) {
+      setSnackbar({
+        open: true,
+        message: 'Veuillez sélectionner un emplacement',
+        severity: 'error'
+      });
+      return false;
+    }
+    
+    if (dialogFormData.items.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'Veuillez ajouter au moins un produit',
+        severity: 'error'
+      });
+      return false;
+    }
+    
+    return true;
+  };
+
+  // Unified dialog handlers
+  const openDialog = (operation: InventoryOperationType, item?: StockSupply | StockTransfer | InventoryType) => {
+    setDialogOperation(operation);
+    setEditMode(!!item);
+    setSelectedItem(item || null);
+    
+    // Reset form data
+    const resetFormData: InventoryDialogFormData = {
+      items: [],
+      status: operation === 'inventory' ? 'draft' : 'pending',
+      supplier: '',
+      zone: selectedZone || zones[0]?.id || '',
+      sourceZone: selectedZone || zones[0]?.id || '',
+      targetZone: zones.find(z => z.id !== (selectedZone || zones[0]?.id))?.id || '',
+      inventoryZone: selectedZone || zones[0]?.id || '',
+      currentProduct: null,
+      currentQuantity: 1,
+      currentUnitPrice: 0,
+    };
+
+    if (item) {
+      // Populate form data based on operation type and item
+      if (operation === 'supply' && 'supplier' in item) {
+        resetFormData.supplier = item.supplier;
+        resetFormData.zone = item.zone;
+        resetFormData.status = item.status as InventoryDialogStatus;
+        resetFormData.items = (item.items || []).map(i => ({
+          product: i.product,
+          quantity: i.quantity,
+          unit_price: i.unit_price ?? 0,
+          total_price: i.total_price ?? (i.quantity * (i.unit_price ?? 0))
+        }));
+      } else if (operation === 'transfer' && 'from_zone' in item) {
+        resetFormData.sourceZone = item.from_zone;
+        resetFormData.targetZone = item.to_zone;
+        resetFormData.status = item.status as InventoryDialogStatus;
+        resetFormData.items = (item.items || []).map(i => {
+          const prod = products.find(p => p.id === i.product);
+          const price = prod?.purchase_price ?? 0;
+          return {
+            product: i.product,
+            quantity: i.quantity,
+            unit_price: price,
+            total_price: price * i.quantity
+          };
+        });
+      } else if (operation === 'inventory' && 'zone' in item) {
+        resetFormData.inventoryZone = item.zone;
+        resetFormData.status = item.status as InventoryDialogStatus;
+        resetFormData.items = (item.items || []).map(i => {
+          const prod = products.find(p => p.id === i.product);
+          const price = prod?.purchase_price ?? 0;
+          const qty = i.actual_quantity ?? 0;
+          return {
+            product: i.product,
+            quantity: qty,
+            unit_price: price,
+            total_price: price * qty
+          };
+        });
+      }
+    }
+
+    setDialogFormData(resetFormData);
+    setDialogQuantityError('');
+    setDialogPriceError('');
+    setDialogOpen(true);
+  };
+
+  const closeDialog = () => {
+    setDialogOpen(false);
+    setSelectedItem(null);
+    setEditMode(false);
+  };
+
+  const handleDialogFormDataChange = (data: Partial<InventoryDialogFormData>) => {
+    setDialogFormData(prev => ({ ...prev, ...data }));
+  };
+
+  const handleAddDialogItem = () => {
+    if (!dialogFormData.currentProduct || 
+        (dialogFormData.currentQuantity ?? 0) <= 0 || 
+        (dialogFormData.currentUnitPrice ?? 0) < 0) {
+      setSnackbar({
+        open: true,
+        message: 'Veuillez sélectionner un produit, entrer une quantité valide (> 0) et un prix unitaire valide (>= 0).',
+        severity: 'warning'
+      });
+      return;
+    }
+
+    const totalPrice = (dialogFormData.currentQuantity ?? 0) * (dialogFormData.currentUnitPrice ?? 0);
+    const newItem = {
+      product: dialogFormData.currentProduct.id,
+      quantity: dialogFormData.currentQuantity ?? 0,
+      unit_price: dialogFormData.currentUnitPrice ?? 0,
+      total_price: totalPrice
+    };
+
+    const existingItemIndex = dialogFormData.items.findIndex(item => item.product === dialogFormData.currentProduct!.id);
+    const updatedItems = [...dialogFormData.items];
+    
+    if (existingItemIndex >= 0) {
+      updatedItems[existingItemIndex] = newItem;
+      setSnackbar({
+        open: true,
+        message: `Produit ${dialogFormData.currentProduct.name} mis à jour.`,
+        severity: 'info'
+      });
+    } else {
+      updatedItems.push(newItem);
+    }
+
+    setDialogFormData(prev => ({
+      ...prev,
+      items: updatedItems,
+      currentProduct: null,
+      currentQuantity: 1,
+      currentUnitPrice: 0
+    }));
+    
+    setDialogQuantityError('');
+    setDialogPriceError('');
+  };
+
+  const handleRemoveDialogItem = (index: number) => {
+    const updatedItems = [...dialogFormData.items];
+    updatedItems.splice(index, 1);
+    setDialogFormData(prev => ({ ...prev, items: updatedItems }));
+  };
+
+  const handleOpenDialogScanner = () => {
+    let operationType: 'lookup' | 'receive' | 'transfer' | 'count' = 'lookup';
+    let targetZone: number | undefined;
+    let sourceZone: number | undefined;
+
+    switch (dialogOperation) {
+      case 'supply':
+        operationType = 'receive';
+        targetZone = dialogFormData.zone as number;
+        break;
+      case 'transfer':
+        operationType = 'transfer';
+        sourceZone = dialogFormData.sourceZone as number;
+        targetZone = dialogFormData.targetZone as number;
+        break;
+      case 'inventory':
+        operationType = 'count';
+        targetZone = dialogFormData.inventoryZone as number;
+        break;
+    }
+
+    openScanner({ 
+      operationType,
+      targetZone,
+      sourceZone
+    });
   };
 
   // Function to specifically refresh current stock data
@@ -345,6 +510,191 @@ const InventoryManagement: React.FC = () => {
       });
     }
   };
+
+  const handleDialogSubmit = async () => {
+    // Validate form based on operation type
+    switch (dialogOperation) {
+      case 'supply':
+        if (!validateSupplyForm()) return;
+        break;
+      case 'transfer':
+        if (!validateTransferForm()) return;
+        break;
+      case 'inventory':
+        if (!validateInventoryForm()) return;
+        break;
+    }
+
+    try {
+      setLoading(true);
+
+      if (dialogOperation === 'supply') {
+        const supplyData = {
+          supplier: dialogFormData.supplier,
+          zone: dialogFormData.zone,
+          items: dialogFormData.items.map(item => ({
+            product: item.product,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total_price: item.total_price,
+          })),
+          status: mapToSupplyStatus(dialogFormData.status),
+        };
+
+        if (selectedItem && 'supplier' in selectedItem) {
+          // Update existing supply
+          const updateData = {
+            ...selectedItem,
+            ...supplyData,
+            supplier: supplyData.supplier === "" ? selectedItem.supplier : supplyData.supplier,
+            zone: supplyData.zone === "" ? selectedItem.zone : supplyData.zone
+          };
+          await InventoryAPI.updateStockSupply(selectedItem.id, updateData);
+          const suppliesData = await InventoryAPI.getStockSupplies();
+          setSupplies(suppliesData);
+          setSnackbar({
+            open: true,
+            message: 'Approvisionnement mis à jour avec succès',
+            severity: 'success'
+          });
+        } else {
+          // Create new supply
+          if (supplyData.supplier === "" || supplyData.zone === "") {
+            throw new Error("Veuillez sélectionner un fournisseur et une zone");
+          }
+          const today = new Date();
+          const date = today.toISOString().split('T')[0];
+          const newSupply = {
+            ...supplyData,
+            supplier: supplyData.supplier as number,
+            zone: supplyData.zone as number,
+            date: date,
+          };
+          
+          await InventoryAPI.createStockSupply(newSupply);
+          const suppliesData = await InventoryAPI.getStockSupplies();
+          setSupplies(suppliesData);
+          setSnackbar({
+            open: true,
+            message: 'Approvisionnement créé avec succès',
+            severity: 'success'
+          });
+        }
+        await refreshCurrentStockData();
+      } else if (dialogOperation === 'transfer') {
+        const transferData = {
+          from_zone: dialogFormData.sourceZone,
+          to_zone: dialogFormData.targetZone,
+          items: dialogFormData.items,
+          status: mapToTransferStatus(dialogFormData.status),
+        };
+
+        if (selectedItem && 'from_zone' in selectedItem) {
+          // Update existing transfer
+          const updatedTransfer = await InventoryAPI.updateStockTransfer(selectedItem.id, {
+            ...selectedItem,
+            ...transferData,
+            from_zone: transferData.from_zone as number,
+            to_zone: transferData.to_zone as number,
+          });
+          setTransfers(transfers.map(t => t.id === selectedItem.id ? updatedTransfer : t));
+          setSnackbar({
+            open: true,
+            message: 'Transfert mis à jour avec succès',
+            severity: 'success'
+          });
+        } else {
+          // Create new transfer
+          if (transferData.from_zone === "" || transferData.to_zone === "") {
+            throw new Error("Veuillez sélectionner les zones source et destination");
+          }
+          const today = new Date();
+          const date = today.toISOString().split('T')[0];
+          const newTransfer = {
+            ...transferData,
+            from_zone: transferData.from_zone as number,
+            to_zone: transferData.to_zone as number,
+            date: date
+          };
+          
+          await InventoryAPI.createStockTransfer(newTransfer);
+          const transfersData = await InventoryAPI.getStockTransfers();
+          setTransfers(transfersData);
+          setSnackbar({
+            open: true,
+            message: 'Transfert créé avec succès',
+            severity: 'success'
+          });
+        }
+        await refreshCurrentStockData();
+      } else if (dialogOperation === 'inventory') {
+        if (selectedItem && 'zone' in selectedItem) {
+          // Update existing inventory
+          const updateData: UpdateInventory = {
+            id: selectedItem.id,
+            reference: selectedItem.reference, 
+            date: selectedItem.date,
+            zone: dialogFormData.inventoryZone as number,
+            status: mapToInventoryStatus(dialogFormData.status),
+            items: dialogFormData.items.map(item => ({ 
+              product: item.product, 
+              actual_quantity: item.quantity,
+              expected_quantity: 0,
+              difference: 0
+            }))
+          };
+          
+          const updatedInventory = await InventoryAPI.updateInventory(selectedItem.id!, updateData);
+          setInventories(inventories.map(i => i.id === selectedItem.id ? updatedInventory : i));
+          setSnackbar({
+            open: true,
+            message: 'Inventaire mis à jour avec succès',
+            severity: 'success'
+          });
+        } else {        
+          // Create new inventory
+          const today = new Date();
+          const date = today.toISOString().split('T')[0];
+          const newInventory: CreateInventory = {
+            zone: dialogFormData.inventoryZone as number,
+            date: date,
+            status: mapToInventoryStatus(dialogFormData.status),
+            items: dialogFormData.items.map(item => ({ 
+              product: item.product, 
+              actual_quantity: item.quantity,
+              expected_quantity: 0,
+              difference: 0
+            }))
+          };
+          
+          await InventoryAPI.createInventory(newInventory);
+          const updatedInventories = await InventoryAPI.getInventories();
+          setInventories(updatedInventories);
+          setSnackbar({
+            open: true,
+            message: 'Inventaire créé avec succès',
+            severity: 'success'
+          });
+        }
+      }
+      
+      closeDialog();
+    } catch (error) {
+      console.error('Error submitting:', error);
+      setSnackbar({
+        open: true,
+        message: `Erreur: ${error.message || 'Une erreur est survenue'}`,
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  // Dialog handlers - now using unified dialog
+  const handleOpenSupplyDialog = () => openDialog('supply');
+  const handleOpenTransferDialog = () => openDialog('transfer');
+  const handleOpenInventoryDialog = () => openDialog('inventory');
+
   // Handle product filter change in Stock Cards
   const handleProductFilterChange = (event: SelectChangeEvent<number>) => {
     const productId = event.target.value as number | '';
@@ -359,428 +709,9 @@ const InventoryManagement: React.FC = () => {
     // Data reloading will happen in the useEffect that depends on selectedZoneFilter
   };
 
-  const handleCloseSupplyDialog = () => {
-    setSupplyDialogOpen(false);
-    setSelectedSupply(null); // Clear selection on close
-  };   
-
-  const handleAddSupplyItem = () => {
-    // Assuming currentSupplyUnitPrice is correctly set (either auto-filled or manually entered)
-    if (!currentSupplyProduct || (currentSupplyQuantity ?? 0) <= 0 || (currentSupplyUnitPrice ?? 0) < 0) {
-      setSnackbar({
-        open: true,
-        message: 'Veuillez sélectionner un produit, entrer une quantité valide (> 0) et un prix unitaire valide (>= 0).',
-        severity: 'warning'
-      });
-      return;
-    }
-    const totalPrice = (currentSupplyQuantity ?? 0) * (currentSupplyUnitPrice ?? 0);
-    const newItem = {
-      product: currentSupplyProduct.id,
-      quantity: currentSupplyQuantity ?? 0,
-      unit_price: currentSupplyUnitPrice ?? 0,
-      total_price: totalPrice
-    };
-
-    const existingItemIndex = supplyItems.findIndex(item => item.product === currentSupplyProduct.id);
-    if (existingItemIndex >= 0) {
-      const updatedItems = [...supplyItems];
-      updatedItems[existingItemIndex] = newItem;
-      setSupplyItems(updatedItems);
-       setSnackbar({
-        open: true,
-        message: `Produit ${currentSupplyProduct.name} mis à jour.`,
-        severity: 'info'
-      });
-    } else {
-      setSupplyItems([...supplyItems, newItem]);
-    }
-    // Reset inputs for next item
-    setCurrentSupplyProduct(null);
-    setCurrentSupplyQuantity(1);
-    setCurrentSupplyUnitPrice(0); // Reset unit price for the next selection
-    // Reset error states
-    setSupplyQuantityError('');
-    setSupplyPriceError('');
-  };
-
-  // New function to open scanner specifically for supplies
-  const openSupplyScanner = () => {
-    openScanner({ 
-      operationType: 'receive',
-      targetZone: selectedZone as number 
-    });
-  };
-
-  const handleRemoveSupplyItem = (index: number) => {
-    const updatedItems = [...supplyItems];
-    updatedItems.splice(index, 1);
-    setSupplyItems(updatedItems);
-  };
-
-  const handleSubmitSupply = async () => {
-    if (!validateSupplyForm()) return;
-    try {
-      setLoading(true);
-      // Ensure items sent to API include required price fields
-      const supplyData = {
-        supplier: selectedSupplier,
-        zone: selectedZone,
-        // Explicitly map to ensure structure matches backend expectations
-        items: supplyItems.map(item => ({
-          product: item.product,
-          quantity: item.quantity,
-          unit_price: item.unit_price, // Ensure non-null
-          total_price: item.total_price, // Ensure non-null
-        })),
-        status: supplyStatus,
-      };
-
-      // Validate again just before sending (optional, but safer)
-      if (supplyData.items.some(item => item.unit_price == null || item.total_price == null)) {
-          throw new Error("Certains articles n'ont pas de prix unitaire ou total défini.");
-      }      if (selectedSupply) {
-        // Update existing supply - filter out empty supplier/zone
-        const updateData = {
-          ...selectedSupply,
-          ...supplyData,
-          supplier: supplyData.supplier === "" ? selectedSupply.supplier : supplyData.supplier,
-          zone: supplyData.zone === "" ? selectedSupply.zone : supplyData.zone
-        };
-        await InventoryAPI.updateStockSupply(selectedSupply.id, updateData);
-        // Refresh supplies list - fetch updated list
-        const suppliesData = await InventoryAPI.getStockSupplies();
-        setSupplies(suppliesData);
-        setSnackbar({
-          open: true,
-          message: 'Approvisionnement mis à jour avec succès',
-          severity: 'success'
-        });
-        await refreshCurrentStockData();      } else {
-        // Create new supply - validate required fields
-        if (supplyData.supplier === "" || supplyData.zone === "") {
-          throw new Error("Veuillez sélectionner un fournisseur et une zone");
-        }
-        const today = new Date();
-        const date = today.toISOString().split('T')[0];
-        const newSupply = {
-          ...supplyData,
-          supplier: supplyData.supplier as number,
-          zone: supplyData.zone as number,
-          date: date,
-        };
-        
-        // Create the supply
-        await InventoryAPI.createStockSupply(newSupply);
-        
-        // Refresh supplies list
-        const suppliesData = await InventoryAPI.getStockSupplies();
-        setSupplies(suppliesData);
-        setSnackbar({
-          open: true,
-          message: 'Approvisionnement créé avec succès',
-          severity: 'success'
-        });
-        await refreshCurrentStockData();
-      }
-      
-      // Close dialog and reset form 
-      handleCloseSupplyDialog();
-    } catch (error) {
-      console.error('Error submitting stock supply:', error);
-      setSnackbar({
-        open: true,
-        message: `Erreur: ${error.message || 'Une erreur est survenue'}`,
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // New transfer dialog
-  const handleOpenTransferDialog = () => {
-    setTransferItems([]);
-    setCurrentTransferProduct(null);
-    setCurrentTransferQuantity(1);
-    setCurrentTransferUnitPrice(0);
-    setSourceZone(selectedZone || zones[0]?.id || '');
-    // Set target zone to a different zone than source
-    const otherZone = zones.find(z => z.id !== (selectedZone || zones[0]?.id))?.id || '';
-    setTargetZone(otherZone);
-    setSelectedTransfer(null);
-    setTransferStatus('pending'); // Reset status on open
-    // Reset error states
-    setTransferQuantityError('');
-    setTransferPriceError('');
-    setTransferDialogOpen(true);
-  };
-
-  const handleCloseTransferDialog = () => {
-    setTransferDialogOpen(false);
-    setSelectedTransfer(null); // Clear selection on close
-  };
-
-  const handleAddTransferItem = () => {
-    if (!currentTransferProduct) return;
-    const existingItemIndex = transferItems.findIndex(item => item.product === currentTransferProduct.id);
-    if (existingItemIndex >= 0) {
-      const updatedItems = [...transferItems];
-      updatedItems[existingItemIndex].quantity += (currentTransferQuantity ?? 1);
-      updatedItems[existingItemIndex].unit_price = (currentTransferUnitPrice ?? 0);
-      updatedItems[existingItemIndex].total_price = updatedItems[existingItemIndex].quantity * (currentTransferUnitPrice ?? 0);
-      setTransferItems(updatedItems);
-    } else {
-      setTransferItems([...transferItems, {
-        product: currentTransferProduct.id,
-        quantity: currentTransferQuantity ?? 1,
-        unit_price: currentTransferUnitPrice ?? 0,
-        total_price: (currentTransferQuantity ?? 1) * (currentTransferUnitPrice ?? 0)
-      }]);
-    }
-    // Reset inputs for next item
-    setCurrentTransferProduct(null);
-    setCurrentTransferQuantity(1);
-    setCurrentTransferUnitPrice(0);
-    // Reset error states
-    setTransferQuantityError('');
-    setTransferPriceError('');
-  };
-
-  // New function to open scanner specifically for transfers
-  const openTransferScanner = () => {
-    openScanner({ 
-      operationType: 'transfer',
-      sourceZone: sourceZone as number,
-      targetZone: targetZone as number 
-    });
-  };
-
-  const handleRemoveTransferItem = (index: number) => {
-    const updatedItems = [...transferItems];
-    updatedItems.splice(index, 1);
-    setTransferItems(updatedItems);
-  };
-
-  const handleSubmitTransfer = async () => {
-    if (!validateTransferForm()) return; // Use enhanced validation
-    try {
-      setLoading(true);
-      const transferData = {
-        from_zone: sourceZone,
-        to_zone: targetZone,
-        items: transferItems,
-        status: transferStatus, // Use state for status
-      };
-      if (selectedTransfer) {
-        // Ensure zones are numbers before updating transfer
-        const fromZoneNumber = transferData.from_zone as number;
-        const toZoneNumber = transferData.to_zone as number;
-        // Update existing transfer
-        const updatedTransfer = await InventoryAPI.updateStockTransfer(selectedTransfer.id, {
-          ...selectedTransfer, // Include existing data
-          ...transferData, // Overwrite with form data
-          from_zone: fromZoneNumber,
-          to_zone: toZoneNumber,
-        });
-        setTransfers(transfers.map(t => t.id === selectedTransfer.id ? updatedTransfer : t));
-        setSnackbar({
-          open: true,
-          message: 'Transfert mis à jour avec succès',
-          severity: 'success'
-        });
-        // Refresh current stock after update
-        await refreshCurrentStockData();
-      } else {
-        // Create new transfer - validate required fields
-        if (transferData.from_zone === "" || transferData.to_zone === "") {
-          throw new Error("Veuillez sélectionner les zones source et destination");
-        }
-        // Ensure zones are numbers before creating transfer
-        const fromZoneNumber = transferData.from_zone as number;
-        const toZoneNumber = transferData.to_zone as number;
-        const today = new Date();
-        const date = today.toISOString().split('T')[0]; // YYYY-MM-DD format
-        const newTransfer = {
-          ...transferData,
-          from_zone: fromZoneNumber,
-          to_zone: toZoneNumber,
-          date: date // Only provide the date, let the backend handle the reference
-        };
-        // API call to create new transfer
-        await InventoryAPI.createStockTransfer(newTransfer);        
-        // Update the transfers state with a new array to ensure proper rendering
-        const transfersData = await InventoryAPI.getStockTransfers();
-        setTransfers(transfersData);
-        
-        setSnackbar({
-          open: true,
-          message: 'Transfert créé avec succès',
-          severity: 'success'
-        });
-        // Refresh current stock after creation
-        await refreshCurrentStockData();
-      }
-      
-      handleCloseTransferDialog();    } catch (err) {
-      console.error('Error saving transfer:', err);
-      const errorMessage = err instanceof AxiosError 
-        ? err.response?.data?.detail || err.message 
-        : err instanceof Error 
-        ? err.message 
-        : 'Erreur inconnue';
-      setSnackbar({
-        open: true,
-        message: `Échec de sauvegarde du transfert: ${errorMessage}`,
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // New inventory count dialog
-  const handleOpenInventoryDialog = () => {
-    setInventoryItems([]);
-    setCurrentInventoryProduct(null);
-    setCurrentInventoryQuantity(1);
-    setCurrentInventoryUnitPrice(0);
-    setInventoryZone(selectedZone || zones[0]?.id || '');
-    setSelectedInventory(null); // Ensure no inventory is selected for creation
-    setInventoryStatus('draft'); // Reset status to default for creation
-    // Reset error states
-    setInventoryQuantityError('');
-    setInventoryPriceError('');
-    setInventoryDialogOpen(true);
-  };
-
-  const handleCloseInventoryDialog = () => {
-    setInventoryDialogOpen(false);
-    setSelectedInventory(null); // Clear selection on close
-  };
-
-  const handleAddInventoryItem = () => {
-    if (!currentInventoryProduct) return;
-    const existingItemIndex = inventoryItems.findIndex(item => item.product === currentInventoryProduct.id);
-    if (existingItemIndex >= 0) {
-      const updatedItems = [...inventoryItems];
-      updatedItems[existingItemIndex].quantity = currentInventoryQuantity ?? 1;
-      updatedItems[existingItemIndex].unit_price = currentInventoryUnitPrice ?? 0;
-      updatedItems[existingItemIndex].total_price = (currentInventoryQuantity ?? 1) * (currentInventoryUnitPrice ?? 0);
-      setInventoryItems(updatedItems);
-    } else {
-      setInventoryItems([...inventoryItems, {
-        product: currentInventoryProduct.id,
-        quantity: currentInventoryQuantity ?? 1,
-        unit_price: currentInventoryUnitPrice ?? 0,
-        total_price: (currentInventoryQuantity ?? 1) * (currentInventoryUnitPrice ?? 0)
-      }]);
-    }
-    // Reset inputs for next item
-    setCurrentInventoryProduct(null);
-    setCurrentInventoryQuantity(1);
-    setCurrentInventoryUnitPrice(0);
-    // Reset error states
-    setInventoryQuantityError('');
-    setInventoryPriceError('');
-  };
-
-  // New function to open scanner specifically for inventories
-  const openInventoryScanner = () => {
-    openScanner({ 
-      operationType: 'count',
-      targetZone: inventoryZone as number 
-    });
-  };
-
-  const handleRemoveInventoryItem = (index: number) => {
-    const updatedItems = [...inventoryItems];
-    updatedItems.splice(index, 1);
-    setInventoryItems(updatedItems);
-  };
-
-  const handleSubmitInventory = async () => {
-    if (!inventoryZone || inventoryItems.length === 0) {
-      setSnackbar({
-        open: true,
-        message: 'Please select a location and add at least one product',
-        severity: 'error'
-      });
-      return;
-    }    try {
-      setLoading(true);
-      
-      if (selectedInventory) {// Update existing inventory
-        // When updating, don't include the inventory field in items to prevent conflicts
-        const updateData: UpdateInventory = {
-          id: selectedInventory.id,
-          reference: selectedInventory.reference, 
-          date: selectedInventory.date,
-          zone: inventoryZone as number,
-          status: inventoryStatus,
-          items: inventoryItems.map(item => ({ 
-            product: item.product, 
-            actual_quantity: item.quantity,
-            expected_quantity: 0, // Default value
-            difference: 0 // Will be calculated
-            // Don't include inventory field - backend will set it automatically
-          }))
-        };
-        
-        const updatedInventory = await InventoryAPI.updateInventory(selectedInventory.id!, updateData);
-        
-        setInventories(inventories.map(i => i.id === selectedInventory.id ? updatedInventory : i));
-        console.log("Inventory updated with items:", inventoryItems);
-        setSnackbar({
-          open: true,
-          message: 'Inventaire mis à jour avec succès',
-          severity: 'success'
-        });      } else {        
-        // Create new inventory count - let the backend generate the reference
-        const today = new Date();
-        const date = today.toISOString().split('T')[0]; // YYYY-MM-DD format
-        const newInventory: CreateInventory = {
-          zone: inventoryZone as number,
-          date: date,
-          status: inventoryStatus,
-          items: inventoryItems.map(item => ({ 
-            product: item.product, 
-            actual_quantity: item.quantity,
-            expected_quantity: 0, // Default value, will be set by backend
-            difference: 0 // Will be calculated by backend
-            // Don't include inventory field for new items - backend will set it
-          }))
-        };
-        // API call to create new inventory count
-        await InventoryAPI.createInventory(newInventory);
-        
-        // Update inventories state with a fresh copy to ensure proper rendering
-        const updatedInventories = await InventoryAPI.getInventories();
-        setInventories(updatedInventories);
-        
-        setSnackbar({
-          open: true,
-          message: 'Inventaire créé avec succès',
-          severity: 'success'
-        });
-      }
-      
-      handleCloseInventoryDialog();
-    } catch (err) {
-      console.error('Error saving inventory count:', err);
-      setSnackbar({
-        open: true,
-        message: `Échec de sauvegarde de l'inventaire: ${err.response?.data?.detail || err.message || 'Unknown error'}`,
-        severity: 'error'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Delete confirmation handlers
-  const handleOpenDeleteConfirm = (id: number, type: 'supply' | 'transfer' | 'inventory') => {
-    setItemToDelete({ id, type });
+  const handleOpenDeleteConfirm = (id: number, type: 'supply' | 'transfer' | 'inventory', name?: string) => {
+    setItemToDelete({ id, type, name });
     setDeleteConfirmOpen(true);
   };
 
@@ -792,7 +723,8 @@ const InventoryManagement: React.FC = () => {
   const handleConfirmDelete = async () => {
     if (!itemToDelete) return;
     try {
-      setLoading(true);      switch (itemToDelete.type) {
+      setDeleteLoading(true);     
+      switch (itemToDelete.type) {
         case 'supply': {
           await InventoryAPI.deleteSupply(itemToDelete.id);
           // Refresh supplies
@@ -820,16 +752,18 @@ const InventoryManagement: React.FC = () => {
         message: 'Item deleted successfully',
         severity: 'success'
       });
-      handleCloseDeleteConfirm();
-    } catch (err) {
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
+    } catch (err: unknown) {
       console.error('Error deleting item:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setSnackbar({
         open: true,
-        message: `Failed to delete item: ${err.message || 'Unknown error'}`,
+        message: `Failed to delete item: ${errorMessage}`,
         severity: 'error'
       });
     } finally {
-      setLoading(false);
+      setDeleteLoading(false);
     }
   };
 
@@ -948,105 +882,49 @@ const InventoryManagement: React.FC = () => {
     }
   };
 
-  // Function to add a scanned product to the current supply
-  const handleAddScannedProductToSupply = (product: Product) => {
+  // Function to add a scanned product to the current operation via unified dialog
+  const handleAddScannedProductToOperation = (product: Product) => {
     if (!product) return;
-    // When adding via scanner, prompt for price or use a default/lookup?
-    // For now, let's add with a default price of 0 and let the user edit.
+    
+    // When adding via scanner, use purchase price or default
+    const unitPrice = product.purchase_price ?? 0;
+    const quantity = scannedQuantity ?? 1;
     const newItem = {
       product: product.id,
-      quantity: scannedQuantity ?? 1,
-      unit_price: 0, // Default or fetch price later
-      total_price: 0 // Default or fetch price later
+      quantity: quantity,
+      unit_price: unitPrice,
+      total_price: unitPrice * quantity
     };
-    // Check if product already exists in the supply items
-    const existingItemIndex = supplyItems.findIndex(item => item.product === product.id);
+    
+    // Check if product already exists in the items
+    const existingItemIndex = dialogFormData.items.findIndex(item => item.product === product.id);
+    const updatedItems = [...dialogFormData.items];
+    
     if (existingItemIndex >= 0) {
       // Update quantity if product already exists
-      const updatedItems = [...supplyItems];
-      updatedItems[existingItemIndex].quantity += (scannedQuantity ?? 1);
-      setSupplyItems(updatedItems);
-    } else {
-      // Add new item
-      setSupplyItems([...supplyItems, newItem]);
-    }
-    // Show success message
-    setSnackbar({
-      open: true,
-      message: `Added ${scannedQuantity ?? 1} units of ${product.name} to the supply`,
-      severity: 'success'
-    });
-    // Reset scanned quantity for next scan
-    setScannedQuantity(1);
-    setScannedProduct(null);
-  };
-
-  // Function to add a scanned product to the current transfer
-  const handleAddScannedProductToTransfer = (product: Product) => {
-    if (!product) return;
-    // Create a transfer item with the scanned product including pricing defaults
-    const newItem = {
-      product: product.id,
-      quantity: scannedQuantity ?? 1,
-      unit_price: 0,
-      total_price: 0
-    };
-    // Check if product already exists in the transfer items
-    const existingItemIndex = transferItems.findIndex(item => item.product === product.id);
-    if (existingItemIndex >= 0) {
-      // Update quantity if product already exists
-      const updatedItems = [...transferItems];
-      updatedItems[existingItemIndex].quantity += (scannedQuantity ?? 1);
-      // Keep unit_price and recalc total price
+      updatedItems[existingItemIndex].quantity += quantity;
       updatedItems[existingItemIndex].total_price = updatedItems[existingItemIndex].quantity * updatedItems[existingItemIndex].unit_price;
-      setTransferItems(updatedItems);
     } else {
       // Add new item
-      setTransferItems([...transferItems, newItem]);
+      updatedItems.push(newItem);
     }
+    
+    // Update dialog form data
+    setDialogFormData(prev => ({ ...prev, items: updatedItems }));
+    
     // Show success message
     setSnackbar({
       open: true,
-      message: `Added ${scannedQuantity ?? 1} units of ${product.name} to the transfer`,
+      message: `Added ${quantity} units of ${product.name}`,
       severity: 'success'
     });
+    
     // Reset scanned quantity for next scan
     setScannedQuantity(1);
     setScannedProduct(null);
   };
 
-  // Function to add a scanned product to the current inventory
-  const handleAddScannedProductToInventory = (product: Product) => {
-    if (!product) return;
-    // Create an inventory item with the scanned product including pricing defaults
-    const newItem = {
-      product: product.id,
-      quantity: scannedQuantity ?? 1,
-      unit_price: 0,
-      total_price: 0
-    };
-    // Check if product already exists in the inventory items
-    const existingItemIndex = inventoryItems.findIndex(item => item.product === product.id);
-    if (existingItemIndex >= 0) {
-      // Update quantity if product already exists
-      const updatedItems = [...inventoryItems];
-      updatedItems[existingItemIndex].quantity = (scannedQuantity ?? 1); // Replace quantity
-      updatedItems[existingItemIndex].total_price = (scannedQuantity ?? 1) * updatedItems[existingItemIndex].unit_price;
-      setInventoryItems(updatedItems);
-    } else {
-      // Add new item
-      setInventoryItems([...inventoryItems, newItem]);
-    }
-    // Show success message
-    setSnackbar({
-      open: true,
-      message: `Counted ${scannedQuantity ?? 1} units of ${product.name}`,
-      severity: 'success'
-    });
-    // Reset scanned quantity for next scan
-    setScannedQuantity(1);
-    setScannedProduct(null);
-  };
+
 
   // Handle QR scan failure
   const onScanFailure = (error: string) => {
@@ -1086,13 +964,10 @@ const InventoryManagement: React.FC = () => {
     
     switch (scannerConfig.operationType) {
       case 'receive':
-        handleAddScannedProductToSupply(product);
-        break;
       case 'transfer':
-        handleAddScannedProductToTransfer(product);
-        break;
       case 'count':
-        handleAddScannedProductToInventory(product);
+        // For all dialog operations, add to the unified dialog
+        handleAddScannedProductToOperation(product);
         break;
       case 'lookup':
       default:
@@ -1101,24 +976,12 @@ const InventoryManagement: React.FC = () => {
     }
   };
   
-  // View functions for details
+  // View functions for details - now using unified dialog
   const handleViewSupplyDetails = async (supplyId: number) => {
     try {
       setLoading(true);
       const supplyDetails = await InventoryAPI.getStockSupply(supplyId);
-      setSelectedSupply(supplyDetails);
-      // Set form state from supply details
-      setSelectedSupplier(supplyDetails.supplier);
-      setSelectedZone(supplyDetails.zone);
-      setSupplyStatus(supplyDetails.status);
-      // Ensure items loaded include prices, provide defaults (0) if missing/null from API
-      setSupplyItems((supplyDetails.items || []).map(item => ({
-        product: item.product,
-        quantity: item.quantity,
-        unit_price: item.unit_price ?? 0, // Default to 0 if null/undefined
-        total_price: item.total_price ?? (item.quantity * (item.unit_price ?? 0)) // Recalculate total if missing, based on unit price (or 0)
-      })));
-      setSupplyDialogOpen(true);
+      openDialog('supply', supplyDetails);
     } catch (err) {
       console.error('Error fetching supply details:', err);
       setSnackbar({
@@ -1135,23 +998,7 @@ const InventoryManagement: React.FC = () => {
     try {
       setLoading(true);
       const transferDetails = await InventoryAPI.getStockTransfer(transferId);
-      setSelectedTransfer(transferDetails);
-      // Set form state
-      setSourceZone(transferDetails.from_zone);
-      setTargetZone(transferDetails.to_zone);
-      setTransferStatus(transferDetails.status);
-      setTransferItems((transferDetails.items || []).map(item => {
-        // Use product purchase price if available
-        const prod = products.find(p => p.id === item.product);
-        const price = prod?.purchase_price ?? 0;
-        return {
-          product: item.product,
-          quantity: item.quantity,
-          unit_price: price,
-          total_price: price * item.quantity
-        };
-      }));
-      setTransferDialogOpen(true);
+      openDialog('transfer', transferDetails);
     } catch (err) {
       console.error('Error fetching transfer details:', err);
       setSnackbar({
@@ -1168,21 +1015,7 @@ const InventoryManagement: React.FC = () => {
     try {
       setLoading(true);
       const inventoryDetails = await InventoryAPI.getInventory(inventoryId);
-      setSelectedInventory(inventoryDetails);
-      setInventoryZone(inventoryDetails.zone);
-      setInventoryStatus(inventoryDetails.status);
-      setInventoryItems((inventoryDetails.items || []).map(item => {
-        const prod = products.find(p => p.id === item.product);
-        const price = prod?.purchase_price ?? 0;
-        const qty = item.actual_quantity ?? 0;
-        return {
-          product: item.product,
-          quantity: qty,
-          unit_price: price,
-          total_price: price * qty
-        };
-      }));
-      setInventoryDialogOpen(true);
+      openDialog('inventory', inventoryDetails);
     } catch (err) {
       console.error('Error fetching inventory details:', err);
       setSnackbar({
@@ -1211,6 +1044,28 @@ const InventoryManagement: React.FC = () => {
   const getSupplierName = (supplierId: number): string => {
     const supplier = suppliers.find(s => s.id === supplierId);
     return supplier ? supplier.name : 'Unknown Supplier';
+  };
+
+  // Status mapping helpers to convert between unified dialog status and API-specific statuses
+  const mapToSupplyStatus = (status: InventoryDialogStatus): StockSupply['status'] => {
+    if (['pending', 'received', 'partial', 'cancelled'].includes(status)) {
+      return status as StockSupply['status'];
+    }
+    return 'pending'; // Default fallback
+  };
+
+  const mapToTransferStatus = (status: InventoryDialogStatus): StockTransfer['status'] => {
+    if (['pending', 'partial', 'completed', 'cancelled'].includes(status)) {
+      return status as StockTransfer['status'];
+    }
+    return 'pending'; // Default fallback
+  };
+
+  const mapToInventoryStatus = (status: InventoryDialogStatus): InventoryType['status'] => {
+    if (['draft', 'in_progress', 'completed', 'cancelled'].includes(status)) {
+      return status as InventoryType['status'];
+    }
+    return 'draft'; // Default fallback
   };
 
   // Initial data loading
@@ -1366,124 +1221,93 @@ const InventoryManagement: React.FC = () => {
 
     return (
       <>
-        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <TextField
-              label="Rechercher Produit"
-              variant="outlined"
+        <Box sx={getStandardFilterBoxStyles()}>
+          <Box sx={getStandardFilterGroupStyles()}>
+            <StandardTextField
+              label={FILTER_TRANSLATIONS.searchProduct}
               value={stockSearchTerm}
               onChange={handleStockSearchChange}
-              size="small"
             />
-            <FormControl size="small" sx={{ minWidth: 200 }}>
-              <InputLabel id="zone-select-label">Filtrer par Emplacement</InputLabel>
-              <Select
-                labelId="zone-select-label"
-                value={selectedZone || ''}
-                label="Filtrer par Emplacement"
-                onChange={(e) => setSelectedZone(e.target.value as number)}
-              >
-                <MenuItem value="">
-                  <em>Tous</em>
+            <StandardSelect
+              label={FILTER_TRANSLATIONS.filterByLocation}
+              value={selectedZone || ''}
+              onChange={(e) => setSelectedZone(e.target.value as number)}
+              sx={{ minWidth: 200 }}
+            >
+              <MenuItem value="">
+                <em>Tous</em>
+              </MenuItem>
+              {zones.map((zone) => (
+                <MenuItem key={zone.id} value={zone.id}>
+                  {zone.name}
                 </MenuItem>
-                {zones.map((zone) => (
-                  <MenuItem key={zone.id} value={zone.id}>
-                    {zone.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+              ))}
+            </StandardSelect>
           </Box>
-          <Box>
-            <Button
-              variant="outlined"
+          <Box sx={getStandardActionGroupStyles()}>
+            <StandardButton
+              standardVariant="secondary"
               startIcon={<RefreshIcon />}
               onClick={handleRefresh}
               disabled={loading}
-              size="medium"
             >
-              Actualiser
-            </Button>
+              {GENERAL_TRANSLATIONS.refresh}
+            </StandardButton>
           </Box>
         </Box>
-        <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>
-          <DataGrid
-            rows={filteredStocks} // Use filtered data
-            getRowId={(row) => row.id || Math.random()}
-            columns={[
-              {
-                field: 'product_name',
-                headerName: 'Produit',
-                flex: 1,
-                width: 120
-              },
-              {
-                field: 'zone',
-                headerName: 'Emplacement',
-                flex: 1,
-                valueGetter: (params) => {
-                  if (!params) return '';
-                  return getZoneName(params);
-                }
-              },
-              {
-                field: 'quantity',
-                headerName: 'Quantité',
-                flex: 1,
-                renderCell: (params: GridRenderCellParams) => {
-                  return (
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      {params.value} {params.row.unit_symbol || ''}
-                      {params.value <= 0 && (
-                        <Tooltip title="Rupture de stock">
-                          <WarningIcon color="error" fontSize="small" sx={{ ml: 1 }} />
-                        </Tooltip>
-                      )}
-                    </Box>
-                  );
-                }
-              },
-              {
-                field: 'updated_at',
-                headerName: 'Dernière mise à jour',
-                flex: 1,
-                valueFormatter: (params) => {
-                  return params ? new Date(params).toLocaleDateString() : 'N/A';
-                }
+        <StandardDataGrid
+          title={INVENTORY_TRANSLATIONS.currentStock}
+          rows={filteredStocks}
+          loading={loading}
+          page={page}
+          rowsPerPage={rowsPerPage}
+          onPaginationChange={(newPage, newRowsPerPage) => {
+            setPage(newPage);
+            setRowsPerPage(newRowsPerPage);
+          }}
+          columns={[
+            {
+              field: 'product_name',
+              headerName: INVENTORY_TRANSLATIONS.product,
+              flex: 1,
+              width: 120
+            },
+            {
+              field: 'zone',
+              headerName: INVENTORY_TRANSLATIONS.location,
+              flex: 1,
+              valueGetter: (params) => {
+                if (!params) return '';
+                return getZoneName(params);
               }
-            ]}
-            pagination
-            paginationModel={{
-              pageSize: rowsPerPage,
-              page: page
-            }}
-            onPaginationModelChange={(model) => {
-              setPage(model.page);
-              setRowsPerPage(model.pageSize);
-            }}
-            pageSizeOptions={[5, 10, 25]}
-            checkboxSelection={false}
-            disableRowSelectionOnClick
-            loading={loading}
-            sx={{
-              border: 'none',
-              '& .MuiDataGrid-columnHeaders': {
-                backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
-                color: theme => theme.palette.text.primary,
-                fontWeight: 'bold'
-              },
-              '& .MuiDataGrid-cell': {
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                fontSize: '0.875rem'
-              },
-              '& .MuiDataGrid-row:hover': {
-                backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
-                cursor: 'pointer'
+            },
+            {
+              field: 'quantity',
+              headerName: INVENTORY_TRANSLATIONS.quantity,
+              flex: 1,
+              renderCell: (params: GridRenderCellParams) => {
+                return (
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    {params.value} {params.row.unit_symbol || ''}
+                    {params.value <= 0 && (
+                      <Tooltip title={STATUS_TRANSLATIONS.out_of_stock}>
+                        <WarningIcon color="error" fontSize="small" sx={{ ml: 1 }} />
+                      </Tooltip>
+                    )}
+                  </Box>
+                );
               }
-            }}
-          />
-        </Box>
+            },
+            {
+              field: 'updated_at',
+              headerName: 'Dernière mise à jour',
+              flex: 1,
+              valueFormatter: (params) => {
+                return params ? new Date(params).toLocaleDateString('fr-FR') : 'N/A';
+              }
+            }
+          ]}
+        />
       </>
     );
   };
@@ -1508,74 +1332,71 @@ const InventoryManagement: React.FC = () => {
     return (
       <>
         <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-          <Typography variant="subtitle1">Approvisionnements</Typography>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}> {/* Align items */}
-            <TextField
-              label="Rechercher (Réf/Fourn./Zone)"
-              variant="outlined"
+          <Typography variant="subtitle1">{INVENTORY_TRANSLATIONS.supplies}</Typography>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+            <StandardTextField
+              label={FILTER_TRANSLATIONS.searchByName}
               value={supplySearchTerm}
               onChange={handleSupplySearchChange}
+              placeholder="Réf/Fourn./Zone"
               size="small"
             />
-            <FormControl size="small" sx={{ minWidth: 150 }}>
-              <InputLabel>Statut</InputLabel>
-              <Select
-                value={supplyStatusFilter}
-                label="Statut"
-                onChange={handleSupplyStatusFilterChange}
-              >
-                <MenuItem value=""><em>Tous</em></MenuItem>
-                <MenuItem value="pending">En attente</MenuItem>
-                <MenuItem value="received">Reçu</MenuItem>
-                <MenuItem value="partial">Partiel</MenuItem>
-                <MenuItem value="cancelled">Annulé</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel>Emplacement</InputLabel>
-              <Select
-                value={supplyZoneFilter}
-                label="Emplacement"
-                onChange={handleSupplyZoneFilterChange}
-              >
-                <MenuItem value=""><em>Tous</em></MenuItem>
-                {zones.map((zone) => (
-                  <MenuItem key={zone.id} value={zone.id}>{zone.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 180 }}>
-              <InputLabel>Fournisseur</InputLabel>
-              <Select
-                value={supplySupplierFilter}
-                label="Fournisseur"
-                onChange={handleSupplySupplierFilterChange}
-              >
-                <MenuItem value=""><em>Tous</em></MenuItem>
-                {suppliers.map((supplier) => (
-                  <MenuItem key={supplier.id} value={supplier.id}>{supplier.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <Button
-              variant="outlined"
+            <StandardSelect
+              label={FILTER_TRANSLATIONS.filterByStatus}
+              value={supplyStatusFilter}
+              onChange={handleSupplyStatusFilterChange}
+              size="small"
+              sx={{ minWidth: 150 }}
+            >
+              <MenuItem value=""><em>Tous</em></MenuItem>
+              <MenuItem value="pending">{STATUS_TRANSLATIONS.pending}</MenuItem>
+              <MenuItem value="received">Reçu</MenuItem>
+              <MenuItem value="partial">{STATUS_TRANSLATIONS.partial}</MenuItem>
+              <MenuItem value="cancelled">{STATUS_TRANSLATIONS.cancelled}</MenuItem>
+            </StandardSelect>
+            <StandardSelect
+              label={FILTER_TRANSLATIONS.filterByLocation}
+              value={supplyZoneFilter}
+              onChange={handleSupplyZoneFilterChange}
+              size="small"
+              sx={{ minWidth: 180 }}
+            >
+              <MenuItem value=""><em>Tous</em></MenuItem>
+              {zones.map((zone) => (
+                <MenuItem key={zone.id} value={zone.id}>{zone.name}</MenuItem>
+              ))}
+            </StandardSelect>
+            <StandardSelect
+              label={FILTER_TRANSLATIONS.filterBySupplier}
+              value={supplySupplierFilter}
+              onChange={handleSupplySupplierFilterChange}
+              size="small"
+              sx={{ minWidth: 180 }}
+            >
+              <MenuItem value=""><em>Tous</em></MenuItem>
+              {suppliers.map((supplier) => (
+                <MenuItem key={supplier.id} value={supplier.id}>{supplier.name}</MenuItem>
+              ))}
+            </StandardSelect>
+            <StandardButton
+              standardVariant="secondary"
               startIcon={<RefreshIcon />}
               onClick={handleRefresh}
               disabled={loading}
-              size="medium"
+              size="small"
             >
-              Actualiser
-            </Button>
+              {GENERAL_TRANSLATIONS.refresh}
+            </StandardButton>
             {/* Add New Supply Button */}
             {hasPermission('add_stocksupply') && (
-              <Button
-                variant="contained"
+              <StandardButton
+                standardVariant="primary"
                 startIcon={<AddIcon />}
-                onClick={handleOpenSupplyDialog} // Use the new handler
-                size="medium" // Match height
+                onClick={handleOpenSupplyDialog}
+                size="small"
               >
-                Nouvel Approvisionnement
-              </Button>
+                {GENERAL_TRANSLATIONS.add} {INVENTORY_TRANSLATIONS.supply}
+              </StandardButton>
             )}
           </Box>
         </Box>
@@ -1586,111 +1407,93 @@ const InventoryManagement: React.FC = () => {
         ) : error ? (
           <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
         ) : (
-          <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>
-            <DataGrid
-              rows={filteredSupplies} // Use filtered data
-              getRowId={(row) => row.id || Math.random()}
-              columns={[
-                {
-                  field: 'reference',
-                  headerName: 'Référence',
-                  flex: 1,
-                },
-                {
-                  field: 'supplier',
-                  headerName: 'Fournisseur',
-                  flex: 1,
-                  valueGetter: (params) => {
-                    if (!params) return '';
-                    return getSupplierName(params);
-                  }
-                },
-                {
-                  field: 'zone',
-                  headerName: 'Emplacement',
-                  flex: 1,
-                  valueGetter: (params) => {
-                    if (!params) return '';
-                    return getZoneName(params);
-                  }
-                },
-                {
-                  field: 'date',
-                  headerName: 'Date',
-                  flex: 1,
-                  valueFormatter: (params) => {
-                    return params ? new Date(params).toLocaleDateString() : '';
-                  }
-                },
-                {
-                  field: 'status',
-                  headerName: 'Statut',
-                  flex: 1,
-                  renderCell: (params: GridRenderCellParams) => (
-                    <>
-                      {params.value === 'pending' && <Alert severity="warning" sx={{ py: 0 }}>En attente</Alert>}
-                      {params.value === 'received' && <Alert severity="success" sx={{ py: 0 }}>Reçu</Alert>}
-                      {params.value === 'partial' && <Alert severity="info" sx={{ py: 0 }}>Partiel</Alert>}
-                      {params.value === 'cancelled' && <Alert severity="error" sx={{ py: 0 }}>Annulé</Alert>}
-                    </>
-                  )
-                },
-                {
-                  field: 'actions',
-                  headerName: 'Actions',
-                  flex: 1,
-                  sortable: false,
-                  renderCell: (params: GridRenderCellParams) => (
-                    <Box>                      <Tooltip title="Voir les détails / Modifier">
-                        <IconButton size="small" color="primary" onClick={() => {
+          <StandardDataGrid
+            rows={filteredSupplies}
+            loading={loading}
+            page={page}
+            rowsPerPage={rowsPerPage}
+            onRowClick={(params) => handleViewSupplyDetails(params.row.id)}
+            onPaginationChange={(newPage, newRowsPerPage) => {
+              setPage(newPage);
+              setRowsPerPage(newRowsPerPage);
+            }}
+            columns={[
+              {
+                field: 'reference',
+                headerName: GENERAL_TRANSLATIONS.reference,
+                flex: 1,
+              },
+              {
+                field: 'supplier',
+                headerName: CONTACTS_TRANSLATIONS.supplier,
+                flex: 1,
+                valueGetter: (params) => {
+                  if (!params) return '';
+                  return getSupplierName(params);
+                }
+              },
+              {
+                field: 'zone',
+                headerName: INVENTORY_TRANSLATIONS.location,
+                flex: 1,
+                valueGetter: (params) => {
+                  if (!params) return '';
+                  return getZoneName(params);
+                }
+              },
+              {
+                field: 'date',
+                headerName: GENERAL_TRANSLATIONS.date,
+                flex: 1,
+                valueFormatter: (params) => {
+                  return params ? new Date(params).toLocaleDateString('fr-FR') : '';
+                }
+              },
+              {
+                field: 'status',
+                headerName: GENERAL_TRANSLATIONS.status,
+                flex: 1,
+                renderCell: (params: GridRenderCellParams) => (
+                  <StatusChip status={params.value} />
+                )
+              },
+              {
+                field: 'actions',
+                headerName: GENERAL_TRANSLATIONS.actions,
+                flex: 1,
+                sortable: false,
+                renderCell: (params: GridRenderCellParams) => (
+                  <Box sx={getStandardActionGroupStyles()}>
+                    <Tooltip title={`${GENERAL_TRANSLATIONS.view} / ${GENERAL_TRANSLATIONS.edit}`}>
+                      <StandardButton
+                        standardVariant="action"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleViewSupplyDetails(params.row.id);
-                        }}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
+                        }}
+                      >
+                        <EditIcon fontSize="small" />
+                      </StandardButton>
+                    </Tooltip>
+                    {hasPermission('delete_stocksupply') && params.row.status === 'pending' && (
+                      <Tooltip title={GENERAL_TRANSLATIONS.delete}>
+                        <StandardButton
+                          standardVariant="action"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenDeleteConfirm(params.row.id, 'supply', params.row.reference);
+                          }}
+                          sx={{ color: 'error.main' }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </StandardButton>
                       </Tooltip>
-                      {hasPermission('delete_stocksupply') && params.row.status === 'pending' && (
-                        <Tooltip title="Supprimer">
-                          <IconButton size="small" color="error" onClick={() => handleOpenDeleteConfirm(params.row.id, 'supply')}>
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                    </Box>
-                  )
-                }
-              ]}
-              pagination
-              paginationModel={{
-                pageSize: rowsPerPage,
-                page: page
-              }}
-              onPaginationModelChange={(model) => {
-                setPage(model.page);
-                setRowsPerPage(model.pageSize);
-              }}
-              pageSizeOptions={[5, 10, 25]}
-              checkboxSelection={false}
-              disableRowSelectionOnClick
-              loading={loading}
-              sx={{
-                border: 'none',
-                '& .MuiDataGrid-columnHeaders': {
-                  backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
-                  color: theme => theme.palette.text.primary,
-                  fontWeight: 'bold'
-                },
-                '& .MuiDataGrid-cell': {
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  fontSize: '0.875rem'
-                },
-                '& .MuiDataGrid-row:hover': {
-                  backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
-                  cursor: 'pointer'
-                }
-              }}
-            />
-          </Box>
+                    )}
+                  </Box>
+                )
+              }
+            ]}
+          />
         )}
       </>
     );
@@ -1794,112 +1597,93 @@ const InventoryManagement: React.FC = () => {
         ) : error ? (
           <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
         ) : (
-          <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>
-            <DataGrid
-              rows={filteredTransfers} // Use filtered data
-              getRowId={(row) => row.id || Math.random()}
-              columns={[
-                {
-                  field: 'reference',
-                  headerName: 'Référence',
-                  flex: 1,
-                },
-                {
-                  field: 'from_zone',
-                  headerName: 'De',
-                  flex: 1,
-                  valueGetter: (params) => {
-                    if (!params) return '';
-                    return getZoneName(params);
-                  }
-                },
-                {
-                  field: 'to_zone',
-                  headerName: 'Vers',
-                  flex: 1,
-                  valueGetter: (params) => {
-                    if (!params) return '';
-                    return getZoneName(params);
-                  }
-                },
-                {
-                  field: 'date',
-                  headerName: 'Date',
-                  flex: 1,
-                  valueFormatter: (params) => {
-                    return params ? new Date(params).toLocaleDateString() : '';
-                  }
-                },
-                {
-                  field: 'status',
-                  headerName: 'Statut',
-                  flex: 1,
-                  renderCell: (params: GridRenderCellParams) => (
-                    <>
-                      {params.value === 'pending' && <Alert severity="warning" sx={{ py: 0 }}>En attente</Alert>}
-                      {params.value === 'completed' && <Alert severity="success" sx={{ py: 0 }}>Terminé</Alert>}
-                      {params.value === 'partial' && <Alert severity="info" sx={{ py: 0 }}>Partiel</Alert>}
-                      {params.value === 'cancelled' && <Alert severity="error" sx={{ py: 0 }}>Annulé</Alert>}
-                    </>
-                  )
-                },
-                {
-                  field: 'actions',
-                  headerName: 'Actions',
-                  flex: 1,
-                  sortable: false,
-                  renderCell: (params: GridRenderCellParams) => (
-                    <Box>
-                      <Tooltip title="Voir les détails">
-                        <IconButton size="small" color="primary" onClick={() => {
+          <StandardDataGrid
+            rows={filteredTransfers}
+            loading={loading}
+            page={page}
+            rowsPerPage={rowsPerPage}
+            onRowClick={(params) => handleViewTransferDetails(params.row.id)}
+            onPaginationChange={(newPage, newRowsPerPage) => {
+              setPage(newPage);
+              setRowsPerPage(newRowsPerPage);
+            }}
+            columns={[
+              {
+                field: 'reference',
+                headerName: 'Référence',
+                flex: 1,
+              },
+              {
+                field: 'from_zone',
+                headerName: 'De',
+                flex: 1,
+                valueGetter: (params) => {
+                  if (!params) return '';
+                  return getZoneName(params);
+                }
+              },
+              {
+                field: 'to_zone',
+                headerName: 'Vers',
+                flex: 1,
+                valueGetter: (params) => {
+                  if (!params) return '';
+                  return getZoneName(params);
+                }
+              },
+              {
+                field: 'date',
+                headerName: 'Date',
+                flex: 1,
+                valueFormatter: (params) => {
+                  return params ? new Date(params).toLocaleDateString('fr-FR') : '';
+                }
+              },
+              {
+                field: 'status',
+                headerName: 'Statut',
+                flex: 1,
+                renderCell: (params: GridRenderCellParams) => (
+                  <StatusChip status={params.value} />
+                )
+              },
+              {
+                field: 'actions',
+                headerName: 'Actions',
+                flex: 1,
+                sortable: false,
+                renderCell: (params: GridRenderCellParams) => (
+                  <Box sx={getStandardActionGroupStyles()}>
+                    <Tooltip title={`${GENERAL_TRANSLATIONS.view} / ${GENERAL_TRANSLATIONS.edit}`}>
+                      <StandardButton
+                        standardVariant="action"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleViewTransferDetails(params.row.id);
-                        }}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
+                        }}
+                      >
+                        <EditIcon fontSize="small" />
+                      </StandardButton>
+                    </Tooltip>
+                    {hasPermission('delete_stocktransfer') && params.row.status === 'pending' && (
+                      <Tooltip title={GENERAL_TRANSLATIONS.delete}>
+                        <StandardButton
+                          standardVariant="action"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenDeleteConfirm(params.row.id, 'transfer', params.row.reference);
+                          }}
+                          sx={{ color: 'error.main' }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </StandardButton>
                       </Tooltip>
-                      {hasPermission('delete_stocktransfer') && params.row.status === 'pending' && (
-                        <Tooltip title="Supprimer">
-                          <IconButton size="small" color="error" onClick={() => handleOpenDeleteConfirm(params.row.id, 'transfer')}>
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                    </Box>
-                  )
-                }
-              ]}
-              pagination
-              paginationModel={{
-                pageSize: rowsPerPage,
-                page: page
-              }}
-              onPaginationModelChange={(model) => {
-                setPage(model.page);
-                setRowsPerPage(model.pageSize);
-              }}
-              pageSizeOptions={[5, 10, 25]}
-              checkboxSelection={false}
-              disableRowSelectionOnClick
-              loading={loading}
-              sx={{
-                border: 'none',
-                '& .MuiDataGrid-columnHeaders': {
-                  backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
-                  color: theme => theme.palette.text.primary,
-                  fontWeight: 'bold'
-                },
-                '& .MuiDataGrid-cell': {
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  fontSize: '0.875rem'
-                },
-                '& .MuiDataGrid-row:hover': {
-                  backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
-                  cursor: 'pointer'
-                }
-              }}
-            />
-          </Box>
+                    )}
+                  </Box>
+                )
+              }
+            ]}
+          />
         )}
       </>
     );
@@ -1997,104 +1781,85 @@ const InventoryManagement: React.FC = () => {
         ) : error ? (
           <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
         ) : (
-          <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>
-            <DataGrid
-              rows={filteredInventories} // Use filtered data
-              getRowId={(row) => row.id || Math.random()}
-              columns={[
-                {
-                  field: 'reference',
-                  headerName: 'Référence',
-                  flex: 1,
-                },
-                {
-                  field: 'zone',
-                  headerName: 'Emplacement',
-                  flex: 1,
-                  valueGetter: (params) => {
-                    if (!params) return '';
-                    return getZoneName(params);
-                  }
-                },
-                {
-                  field: 'date',
-                  headerName: 'Date',
-                  flex: 1,
-                  valueFormatter: (params) => {
-                    return params ? new Date(params).toLocaleDateString() : '';
-                  }
-                },
-                {
-                  field: 'status',
-                  headerName: 'Statut',
-                  flex: 1,
-                  renderCell: (params: GridRenderCellParams) => (
-                    <>
-                      {params.value === 'draft' && <Alert severity="info" sx={{ py: 0 }}>Brouillon</Alert>}
-                      {params.value === 'in_progress' && <Alert severity="warning" sx={{ py: 0 }}>En cours</Alert>}
-                      {params.value === 'completed' && <Alert severity="success" sx={{ py: 0 }}>Terminé</Alert>}
-                      {params.value === 'cancelled' && <Alert severity="error" sx={{ py: 0 }}>Annulé</Alert>}
-                    </>
-                  )
-                },
-                {
-                  field: 'actions',
-                  headerName: 'Actions',
-                  flex: 1,
-                  sortable: false,
-                  renderCell: (params: GridRenderCellParams) => (
-                    <Box>
-                      <Tooltip title="Voir les détails">
-                        <IconButton size="small" color="primary" onClick={() => {
+          <StandardDataGrid
+            rows={filteredInventories}
+            loading={loading}
+            page={page}
+            rowsPerPage={rowsPerPage}
+            onRowClick={(params) => handleViewInventoryDetails(params.row.id)}
+            onPaginationChange={(newPage, newRowsPerPage) => {
+              setPage(newPage);
+              setRowsPerPage(newRowsPerPage);
+            }}
+            columns={[
+              {
+                field: 'reference',
+                headerName: 'Référence',
+                flex: 1,
+              },
+              {
+                field: 'zone',
+                headerName: 'Emplacement',
+                flex: 1,
+                valueGetter: (params) => {
+                  if (!params) return '';
+                  return getZoneName(params);
+                }
+              },
+              {
+                field: 'date',
+                headerName: 'Date',
+                flex: 1,
+                valueFormatter: (params) => {
+                  return params ? new Date(params).toLocaleDateString('fr-FR') : '';
+                }
+              },
+              {
+                field: 'status',
+                headerName: 'Statut',
+                flex: 1,
+                renderCell: (params: GridRenderCellParams) => (
+                  <StatusChip status={params.value} />
+                )
+              },
+              {
+                field: 'actions',
+                headerName: 'Actions',
+                flex: 1,
+                sortable: false,
+                renderCell: (params: GridRenderCellParams) => (
+                  <Box sx={getStandardActionGroupStyles()}>
+                    <Tooltip title={`${GENERAL_TRANSLATIONS.view} / ${GENERAL_TRANSLATIONS.edit}`}>
+                      <StandardButton
+                        standardVariant="action"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleViewInventoryDetails(params.row.id);
-                        }}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
+                        }}
+                      >
+                        <EditIcon fontSize="small" />
+                      </StandardButton>
+                    </Tooltip>
+                    {hasPermission('delete_inventory') &&
+                      (params.row.status === 'draft' || params.row.status === 'in_progress') && (
+                      <Tooltip title={GENERAL_TRANSLATIONS.delete}>
+                        <StandardButton
+                          standardVariant="action"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenDeleteConfirm(params.row.id, 'inventory', params.row.reference);
+                          }}
+                          sx={{ color: 'error.main' }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </StandardButton>
                       </Tooltip>
-                      {hasPermission('delete_inventory') &&
-                        (params.row.status === 'draft' || params.row.status === 'in_progress') && (
-                        <Tooltip title="Supprimer">
-                          <IconButton size="small" color="error" onClick={() => handleOpenDeleteConfirm(params.row.id, 'inventory')}>
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                    </Box>
-                  )
-                }
-              ]}
-              pagination
-              paginationModel={{
-                pageSize: rowsPerPage,
-                page: page
-              }}
-              onPaginationModelChange={(model) => {
-                setPage(model.page);
-                setRowsPerPage(model.pageSize);
-              }}
-              pageSizeOptions={[5, 10, 25]}
-              checkboxSelection={false}
-              disableRowSelectionOnClick
-              loading={loading}
-              sx={{
-                border: 'none',
-                '& .MuiDataGrid-columnHeaders': {
-                  backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
-                  color: theme => theme.palette.text.primary,
-                  fontWeight: 'bold'
-                },
-                '& .MuiDataGrid-cell': {
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                  fontSize: '0.875rem'
-                },
-                '& .MuiDataGrid-row:hover': {
-                  backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
-                  cursor: 'pointer'
-                }
-              }}
-            />
-          </Box>
+                    )}
+                  </Box>
+                )
+              }
+            ]}
+          />
         )}
       </>
     );
@@ -2413,7 +2178,7 @@ const InventoryManagement: React.FC = () => {
                   color="primary"
                   sx={{ mt: 2 }}
                   fullWidth
-                  onClick={() => handleAddScannedProductToSupply(scannedProduct)}
+                  onClick={() => handleAddScannedProductToOperation(scannedProduct)}
                 >
                   Ajouter à l'approvisionnement
                 </Button>
@@ -2424,7 +2189,7 @@ const InventoryManagement: React.FC = () => {
                   color="primary"
                   sx={{ mt: 2 }}
                   fullWidth
-                  onClick={() => handleAddScannedProductToTransfer(scannedProduct)}
+                  onClick={() => handleAddScannedProductToOperation(scannedProduct)}
                 >
                   Ajouter au transfert
                 </Button>
@@ -2435,7 +2200,7 @@ const InventoryManagement: React.FC = () => {
                   color="primary"
                   sx={{ mt: 2 }}
                   fullWidth
-                  onClick={() => handleAddScannedProductToInventory(scannedProduct)}
+                  onClick={() => handleAddScannedProductToOperation(scannedProduct)}
                 >
                   Ajouter à l'inventaire
                 </Button>
@@ -2452,570 +2217,99 @@ const InventoryManagement: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-      {/* Supply Dialog */}
-      <Dialog
-        open={supplyDialogOpen}
-        onClose={handleCloseSupplyDialog}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>{selectedSupply ? 'Modifier' : 'Nouvel'} Approvisionnement</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
-                <InputLabel>Fournisseur</InputLabel>
-                <Select
-                  value={selectedSupplier}
-                  onChange={(e) => setSelectedSupplier(e.target.value as number)}
-                  label="Fournisseur"
-                >
-                  <MenuItem value="">
-                    <em>Sélectionner un fournisseur</em>
-                  </MenuItem>
-                  {suppliers.map((supplier) => (
-                    <MenuItem key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
-                <InputLabel>Emplacement</InputLabel>
-                <Select
-                  value={selectedZone || ''}
-                  onChange={(e) => setSelectedZone(e.target.value as number)}
-                  label="Emplacement"
-                >
-                  {zones.map((zone) => (
-                    <MenuItem key={zone.id} value={zone.id}>
-                      {zone.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}> {/* Add Status Field */}
-              <FormControl fullWidth required>
-                <InputLabel>Statut</InputLabel>
-                <Select
-                  value={supplyStatus}
-                  onChange={(e) => setSupplyStatus(e.target.value as StockSupply['status'])}
-                  label="Statut"
-                >
-                  <MenuItem value="pending">En attente</MenuItem>
-                  <MenuItem value="received">Reçu</MenuItem>
-                  <MenuItem value="partial">Partiel</MenuItem>
-                  <MenuItem value="cancelled">Annulé</MenuItem> {/* Add cancelled option */}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle1">Produits</Typography>
-              </Box>
-              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                <FormControl fullWidth sx={{ flexGrow: 1 }}>
-                  <InputLabel>Produit</InputLabel>
-                  <Select
-                    value={currentSupplyProduct?.id || ''}
-                    onChange={(e) => {
-                      const productId = e.target.value as number;
-                      const product = products.find(p => p.id === productId);
-                      setCurrentSupplyProduct(product || null);
-                      // Auto-fill unit price from product purchase price
-                      setCurrentSupplyUnitPrice(product?.purchase_price ?? 0);
-                    }}
-                    label="Produit"
-                  >
-                    <MenuItem value="">
-                      <em>Sélectionner un produit</em>
-                    </MenuItem>
-                    {products.map((product) => (
-                      <MenuItem key={product.id} value={product.id}>
-                        {product.name} { `(${product.purchase_price})`}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <TextField
-                  label="Quantité"
-                  type="text"
-                  value={formatNumberDisplay(currentSupplyQuantity)}
-                  onChange={(e) => {
-                    const validatedValue = validateIntegerInput(e.target.value, currentSupplyQuantity);
-                    setCurrentSupplyQuantity(validatedValue);
-                    setSupplyQuantityError(getValidationError(validatedValue, 'quantity'));
-                  }}
-                  sx={{ width: 120 }}
-                  error={!!supplyQuantityError}
-                  helperText={supplyQuantityError}
-                />
-                {/* Unit Price Field - Value is now managed by state, potentially auto-filled */}
-                <TextField
-                  label="Prix Unitaire"
-                  type="text"
-                  value={formatNumberDisplay(currentSupplyUnitPrice)}
-                  onChange={(e) => {
-                    const validatedValue = validateDecimalInput(e.target.value, currentSupplyUnitPrice);
-                    setCurrentSupplyUnitPrice(validatedValue);
-                    setSupplyPriceError(getValidationError(validatedValue, 'price'));
-                  }}
-                  sx={{ width: 120 }}
-                  error={!!supplyPriceError}
-                  helperText={supplyPriceError}
-                />
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleAddSupplyItem}
-                  disabled={!currentSupplyProduct || (currentSupplyQuantity ?? 0) <= 0 || (currentSupplyUnitPrice ?? 0) < 0 || !!supplyQuantityError || !!supplyPriceError}
-                  sx={{ alignSelf: 'flex-end' }}
-                >
-                  Ajouter
-                </Button>
-              </Box>
-              {supplyItems.length > 0 ? (
-                <TableContainer component={Paper} variant="outlined">
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Produit</TableCell>
-                        <TableCell align="right">Quantité</TableCell>
-                        <TableCell align="right">Prix Unitaire</TableCell>
-                        <TableCell align="right">Prix Total</TableCell>
-                        <TableCell align="right">Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {supplyItems.map((item, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{getProductName(item.product)}</TableCell>
-                          <TableCell align="right">{item.quantity}</TableCell>
-                          <TableCell align="right">{(item.unit_price)}</TableCell>
-                          <TableCell align="right">{item.total_price}</TableCell>
-                          <TableCell align="right">
-                            <IconButton size="small" color="error" onClick={() => handleRemoveSupplyItem(index)}>
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              ) : (
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  Aucun produit ajouté. Utilisez le formulaire ci-dessus pour ajouter des produits à cet approvisionnement.
-                </Alert>
-              )}
-              <Box sx={{ mt: 2 }}>
-                <Button
-                  variant="outlined"
-                  startIcon={<QrCodeScannerIcon />}
-                  onClick={openSupplyScanner}
-                >
-                  Scanner un Produit
-                </Button>
-              </Box>
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseSupplyDialog}>Annuler</Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleSubmitSupply}
-            disabled={!selectedSupplier || supplyItems.length === 0 || loading}
-          >
-            {loading ? <CircularProgress size={24} /> : (selectedSupply ? 'Mettre à jour' : 'Créer')} l'Approvisionnement
-          </Button>
-        </DialogActions>
-      </Dialog>
 
-      {/* Transfer Dialog */}
-      <Dialog
-        open={transferDialogOpen}
-        onClose={handleCloseTransferDialog}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>{selectedTransfer ? 'Modifier' : 'Nouveau'} Transfert de Stock</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
-                <InputLabel>Emplacement Source</InputLabel>
-                <Select
-                  value={sourceZone}
-                  onChange={(e) => setSourceZone(e.target.value as number)}
-                  label="Emplacement Source"
-                >
-                  <MenuItem value="">
-                    <em>Sélectionner l'emplacement source</em>
-                  </MenuItem>
-                  {zones.map((zone) => (
-                    <MenuItem key={zone.id} value={zone.id}>
-                      {zone.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
-                <InputLabel>Emplacement Cible</InputLabel>
-                <Select
-                  value={targetZone}
-                  onChange={(e) => setTargetZone(e.target.value as number)}
-                  label="Emplacement Cible"
-                >
-                  <MenuItem value="">
-                    <em>Sélectionner l'emplacement cible</em>
-                  </MenuItem>
-                  {zones.map((zone) => (
-                    <MenuItem key={zone.id} value={zone.id}>
-                      {zone.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}> {/* Add Status Field */}
-              <FormControl fullWidth required>
-                <InputLabel>Statut</InputLabel>
-                <Select
-                  value={transferStatus}
-                  onChange={(e) => setTransferStatus(e.target.value as StockTransfer['status'])}
-                  label="Statut"
-                >
-                  <MenuItem value="pending">En attente</MenuItem>
-                  <MenuItem value="partial">Partiel</MenuItem>
-                  <MenuItem value="completed">Terminé</MenuItem>
-                  <MenuItem value="cancelled">Annulé</MenuItem> {/* Add cancelled option */}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom>
-                Produits
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                <FormControl fullWidth sx={{ flexGrow: 1 }}>
-                  <InputLabel>Produit</InputLabel>
-                  <Select
-                    value={currentTransferProduct?.id || ''}
-                    onChange={(e) => {
-                      const productId = e.target.value as number;
-                      const product = products.find(p => p.id === productId);
-                      setCurrentTransferProduct(product || null);
-                      // Auto-fill unit price from product purchase price
-                      setCurrentTransferUnitPrice(product?.purchase_price ?? 0);
-                    }}
-                    label="Produit"
-                  >
-                    <MenuItem value="">
-                      <em>Sélectionner un produit</em>
-                    </MenuItem>
-                    {products.map((product) => (
-                      <MenuItem key={product.id} value={product.id}>
-                        {product.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <TextField
-                  label="Quantité"
-                  type="text"
-                  value={formatNumberDisplay(currentTransferQuantity)}
-                  onChange={(e) => {
-                    const validatedValue = validateIntegerInput(e.target.value, currentTransferQuantity);
-                    setCurrentTransferQuantity(validatedValue);
-                    setTransferQuantityError(getValidationError(validatedValue, 'quantity'));
-                  }}
-                  sx={{ width: 120 }}
-                  error={!!transferQuantityError}
-                  helperText={transferQuantityError}
-                />
-                <TextField
-                  label="Prix Unitaire"
-                  type="text"
-                  value={formatNumberDisplay(currentTransferUnitPrice)}
-                  onChange={(e) => {
-                    const validatedValue = validateDecimalInput(e.target.value, currentTransferUnitPrice);
-                    setCurrentTransferUnitPrice(validatedValue);
-                    setTransferPriceError(getValidationError(validatedValue, 'price'));
-                  }}
-                  sx={{ width: 120 }}
-                  error={!!transferPriceError}
-                  helperText={transferPriceError}
-                />
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleAddTransferItem}
-                  disabled={!currentTransferProduct || !!transferQuantityError || !!transferPriceError}
-                >
-                  Ajouter
-                </Button>
-              </Box>
-              {transferItems.length > 0 ? (
-                <TableContainer component={Paper} variant="outlined">
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Produit</TableCell>
-                        <TableCell align="right">Quantité</TableCell>
-                        <TableCell align="right">Prix Unitaire</TableCell>
-                        <TableCell align="right">Prix Total</TableCell>
-                        <TableCell align="right">Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {transferItems.map((item, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{getProductName(item.product)}</TableCell>
-                          <TableCell align="right">{item.quantity}</TableCell>
-                          <TableCell align="right">{item.unit_price}</TableCell>
-                          <TableCell align="right">{item.total_price}</TableCell>
-                          <TableCell align="right">
-                            <IconButton size="small" color="error" onClick={() => handleRemoveTransferItem(index)}>
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              ) : (
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  Aucun produit ajouté. Utilisez le formulaire ci-dessus pour ajouter des produits à ce transfert.
-                </Alert>
-              )}
-              <Box sx={{ mt: 2 }}>
-                <Button
-                  variant="outlined"
-                  startIcon={<QrCodeScannerIcon />}
-                  onClick={openTransferScanner}
-                >
-                  Scanner un Produit
-                </Button>
-              </Box>
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseTransferDialog}>Annuler</Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleSubmitTransfer}
-            disabled={!sourceZone || !targetZone || sourceZone === targetZone || transferItems.length === 0}
-          >
-            {selectedTransfer ? 'Mettre à jour' : 'Créer'} le Transfert
-          </Button>
-        </DialogActions>
-      </Dialog>
-      {/* Inventory Count Dialog */}
-      <Dialog
-        open={inventoryDialogOpen}
-        onClose={handleCloseInventoryDialog}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>{selectedInventory ? 'Modifier' : 'Nouvel'} Inventaire</DialogTitle> {/* Dynamic Title */}
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}> {/* Adjust grid size */}
-              <FormControl fullWidth required>
-                <InputLabel>Emplacement</InputLabel>
-                <Select
-                  value={inventoryZone}
-                  onChange={(e) => setInventoryZone(e.target.value as number)}
-                  label="Emplacement"
-                >
-                  <MenuItem value="">
-                    <em>Sélectionner un emplacement</em>
-                  </MenuItem>
-                  {zones.map((zone) => (
-                    <MenuItem key={zone.id} value={zone.id}>
-                      {zone.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}> {/* Add Status Field */}
-              <FormControl fullWidth required>
-                <InputLabel>Statut</InputLabel>
-                <Select
-                  value={inventoryStatus}
-                  onChange={(e) => setInventoryStatus(e.target.value as InventoryType['status'])}
-                  label="Statut"
-                >
-                  <MenuItem value="draft">Brouillon</MenuItem>
-                  <MenuItem value="in_progress">En cours</MenuItem>
-                  <MenuItem value="completed">Terminé</MenuItem>
-                  <MenuItem value="cancelled">Annulé</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom>
-                Produits et Quantités
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                <FormControl fullWidth sx={{ flexGrow: 1 }}>
-                  <InputLabel>Produit</InputLabel>
-                  <Select
-                    value={currentInventoryProduct?.id || ''}
-                    onChange={(e) => {
-                      const productId = e.target.value as number;
-                      const product = products.find(p => p.id === productId);
-                      setCurrentInventoryProduct(product || null);
-                      // Auto-fill unit price for inventory from product purchase price
-                      setCurrentInventoryUnitPrice(product?.purchase_price ?? 0);
-                    }}
-                    label="Produit"
-                  >
-                    <MenuItem value="">
-                      <em>Sélectionner un produit</em>
-                    </MenuItem>
-                    {products.map((product) => (
-                      <MenuItem key={product.id} value={product.id}>
-                        {product.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <TextField
-                  label="Quantité"
-                  type="text"
-                  value={formatNumberDisplay(currentInventoryQuantity)}
-                  onChange={(e) => {
-                    const validatedValue = validateIntegerInput(e.target.value, currentInventoryQuantity);
-                    setCurrentInventoryQuantity(validatedValue);
-                    setInventoryQuantityError(getValidationError(validatedValue, 'quantity'));
-                  }}
-                  sx={{ width: 120 }}
-                  error={!!inventoryQuantityError}
-                  helperText={inventoryQuantityError}
-                />
-                <TextField
-                  label="Prix Unitaire"
-                  type="text"
-                  value={formatNumberDisplay(currentInventoryUnitPrice)}
-                  onChange={(e) => {
-                    const validatedValue = validateDecimalInput(e.target.value, currentInventoryUnitPrice);
-                    setCurrentInventoryUnitPrice(validatedValue);
-                    setInventoryPriceError(getValidationError(validatedValue, 'price'));
-                  }}
-                  sx={{ width: 120 }}
-                  error={!!inventoryPriceError}
-                  helperText={inventoryPriceError}
-                />
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleAddInventoryItem}
-                  disabled={!currentInventoryProduct || !!inventoryQuantityError || !!inventoryPriceError}
-                >
-                  Ajouter
-                </Button>
-              </Box>
-              {inventoryItems.length > 0 ? (
-                <TableContainer component={Paper} variant="outlined">
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Produit</TableCell>
-                        <TableCell align="right">Quantité comptée</TableCell>
-                        <TableCell align="right">Prix Unitaire</TableCell>
-                        <TableCell align="right">Prix Total</TableCell>
-                        <TableCell align="right">Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {inventoryItems.map((item, index) => (
-                        <TableRow key={index}>
-                          <TableCell>{getProductName(item.product)}</TableCell>
-                          <TableCell align="right">{item.quantity}</TableCell>
-                          <TableCell align="right">{item.unit_price}</TableCell>
-                          <TableCell align="right">{item.total_price}</TableCell>
-                          <TableCell align="right">
-                            <IconButton size="small" color="error" onClick={() => handleRemoveInventoryItem(index)}>
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              ) : (
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  Aucun produit ajouté. Utilisez le formulaire ci-dessus pour ajouter des produits à cet inventaire.
-                </Alert>
-              )}
-              <Box sx={{ mt: 2 }}>
-                <Button
-                  variant="outlined"
-                  startIcon={<QrCodeScannerIcon />}
-                  onClick={openInventoryScanner}
-                >
-                  Scanner un Produit
-                </Button>
-              </Box>
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Note : Pour les produits non trouvés lors du scan, vous pouvez les ajouter manuellement. Les articles avec une quantité de 0 seront enregistrés comme étant en rupture de stock.
-                </Typography>
-              </Box>
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseInventoryDialog}>Annuler</Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleSubmitInventory}
-            disabled={!inventoryZone || inventoryItems.length === 0}
-          >
-            {selectedInventory ? 'Mettre à jour' : 'Créer'} l'Inventaire {/* Dynamic Button Text */}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      {/* Delete Confirmation Dialog */}
+
+
+
+      {/* Standardized Delete Confirmation Dialog */}
       <Dialog
         open={deleteConfirmOpen}
         onClose={handleCloseDeleteConfirm}
-        maxWidth="xs"
-        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+            backgroundColor: 'background.paper'
+          }
+        }}
       >
-        <DialogTitle>Confirmer la suppression</DialogTitle>
-        <DialogContent>
-          <Typography>
-            {itemToDelete?.type === 'supply' && 'Êtes-vous sûr de vouloir supprimer cet approvisionnement ? Cette action ne peut pas être annulée.'}
-            {itemToDelete?.type === 'transfer' && 'Êtes-vous sûr de vouloir supprimer ce transfert ? Cette action ne peut pas être annulée.'}
-            {itemToDelete?.type === 'inventory' && 'Êtes-vous sûr de vouloir supprimer cet inventaire ? Cette action ne peut pas être annulée.'}
-          </Typography>
+        <DialogTitle sx={{ 
+          backgroundColor: 'error.main', 
+          color: '#fff',
+          fontWeight: 'bold'
+        }}>
+          Confirmation de suppression
+        </DialogTitle>
+        <DialogContent sx={{ 
+          p: 3, 
+          mt: 2, 
+          backgroundColor: 'background.paper' 
+        }}>
+          <DialogContentText color="text.primary" sx={{ mb: 2 }}>
+            {itemToDelete?.type === 'supply' && (
+              <>Êtes-vous sûr de vouloir supprimer l'approvisionnement <strong>{itemToDelete.name || `#${itemToDelete.id}`}</strong> ?</>
+            )}
+            {itemToDelete?.type === 'transfer' && (
+              <>Êtes-vous sûr de vouloir supprimer le transfert <strong>{itemToDelete.name || `#${itemToDelete.id}`}</strong> ?</>
+            )}
+            {itemToDelete?.type === 'inventory' && (
+              <>Êtes-vous sûr de vouloir supprimer l'inventaire <strong>{itemToDelete.name || `#${itemToDelete.id}`}</strong> ?</>
+            )}
+          </DialogContentText>
+          
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            ⚠️ Cette action supprimera définitivement cet élément et ses données associées.
+          </Alert>
+          
+          <Alert severity="error">
+            Cette action est irréversible.
+          </Alert>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDeleteConfirm}>Annuler</Button>
-          <Button
-            onClick={handleConfirmDelete}
-            color="error"
-            variant="contained"
+        <DialogActions sx={{ 
+          p: 2, 
+          backgroundColor: 'rgba(0,0,0,0.02)'
+        }}>
+          <Button 
+            onClick={handleCloseDeleteConfirm} 
+            disabled={deleteLoading}
+            sx={getStandardSecondaryButtonStyles()}
           >
-            Supprimer
+            Annuler
+          </Button>
+          <Button 
+            variant="contained" 
+            color="error" 
+            onClick={handleConfirmDelete}
+            disabled={deleteLoading}
+            startIcon={deleteLoading ? <CircularProgress size={20} color="inherit" /> : <DeleteIcon />}
+            sx={getStandardPrimaryButtonStyles()}
+          >
+            {deleteLoading ? 'Suppression...' : 'Supprimer'}
           </Button>
         </DialogActions>
       </Dialog>
+      
+      {/* Unified Inventory Dialog */}
+      <InventoryDialog
+        open={dialogOpen}
+        operationType={dialogOperation}
+        editMode={editMode}
+        formData={dialogFormData}
+        products={products}
+        zones={zones}
+        suppliers={suppliers}
+        loading={loading}
+        quantityError={dialogQuantityError}
+        priceError={dialogPriceError}
+        onClose={closeDialog}
+        onSubmit={handleDialogSubmit}
+        onFormDataChange={handleDialogFormDataChange}
+        onAddItem={handleAddDialogItem}
+        onRemoveItem={handleRemoveDialogItem}
+        onOpenScanner={handleOpenDialogScanner}
+        getProductName={getProductName}
+      />
+
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}

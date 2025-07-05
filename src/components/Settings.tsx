@@ -41,7 +41,8 @@ const Settings = () => {
     currency: '',
     initial_balance: 0
   });
-  const [loading, setLoading] = useState(false);  const [notification, setNotification] = useState<{
+  const [loading, setLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);  const [notification, setNotification] = useState<{
     open: boolean;
     message: string;
     severity: 'success' | 'error' | 'warning' | 'info';
@@ -242,7 +243,7 @@ const Settings = () => {
 
   // Handle delete
   const handleDelete = async () => {
-    setLoading(true);
+    setDeleteLoading(true);
     try {
       const endpoint = getEndpoint();
       if (!endpoint) throw new Error("No endpoint specified");
@@ -264,7 +265,7 @@ const Settings = () => {
         severity: 'error'
       });
     } finally {
-      setLoading(false);
+      setDeleteLoading(false);
       handleCloseDialog();
     }
   };
@@ -768,9 +769,13 @@ const Settings = () => {
             mt: 2, 
             backgroundColor: theme.palette.background.paper 
           }}>
-            <DialogContentText color="text.primary">
-              Êtes-vous sûr de vouloir supprimer {currentItem?.name} ? Cette action ne peut pas être annulée.
+            <DialogContentText color="text.primary" sx={{ mb: 2 }}>
+              Êtes-vous sûr de vouloir supprimer <strong>{currentItem?.name}</strong> ?
             </DialogContentText>
+            
+            <Alert severity="error">
+              Cette action est irréversible.
+            </Alert>
           </DialogContent>
           <DialogActions sx={{ 
             p: 2, 
@@ -780,7 +785,7 @@ const Settings = () => {
           }}>
             <Button 
               onClick={handleCloseDialog} 
-              disabled={loading}
+              disabled={deleteLoading}
               variant="outlined"
               sx={{ borderRadius: '20px' }}
             >
@@ -790,8 +795,8 @@ const Settings = () => {
               variant="contained" 
               color="error" 
               onClick={handleDelete}
-              disabled={loading}
-              startIcon={loading ? <CircularProgress size={20} /> : <DeleteIcon />}
+              disabled={deleteLoading}
+              startIcon={deleteLoading ? <CircularProgress size={20} /> : <DeleteIcon />}
               sx={{ 
                 borderRadius: '20px',
                 boxShadow: theme.palette.mode === 'dark' 
@@ -804,7 +809,7 @@ const Settings = () => {
                 }
               }}
             >
-              {loading ? 'Suppression...' : 'Supprimer'}
+              {deleteLoading ? 'Suppression...' : 'Supprimer'}
             </Button>
           </DialogActions>
         </Dialog>

@@ -5,11 +5,11 @@ import {
   Paper,
   TextField,
   Button,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  DialogContentText,
   Grid,
   MenuItem,
   Select,
@@ -20,7 +20,7 @@ import {
   Alert,
   InputAdornment,
 } from '@mui/material';
-import { DataGrid, GridRenderCellParams } from '@mui/x-data-grid';
+import { GridRenderCellParams } from '@mui/x-data-grid';
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, QrCode as QrCodeIcon } from '@mui/icons-material';
 import { 
   Product, 
@@ -44,6 +44,12 @@ import PermissionGuard from './PermissionGuard';
 import { usePermissionCheck } from '../hooks/usePermissionCheck';
 import PermissionButton from './common/PermissionButton';
 import ProductQRCode from './common/ProductQRCode';
+import StandardDataGrid from './common/StandardDataGrid';
+import StatusChip from './common/StatusChip';
+import { 
+  getStandardPrimaryButtonStyles,
+  getStandardSecondaryButtonStyles 
+} from '../utils/styleUtils';
 
 const Products = () => {
   const theme = useTheme();  const { canPerform } = usePermissionCheck();
@@ -76,6 +82,26 @@ const Products = () => {
   });
   
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+
+  // Delete confirmation dialog state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Add pagination state for the products grid
+  const [paginationModel, setPaginationModel] = useState({
+    page: 0,
+    pageSize: 10,
+  });
+
+  // Handle row clicks for editing
+  const handleRowClick = (params: { row: Product }) => {
+    handleEditProduct(params.row);
+  };
+
+  useEffect(() => {
+    setPaginationModel(prev => ({ ...prev, page: 0 }));
+  }, [searchTerm, categoryFilter]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -287,41 +313,69 @@ const Products = () => {
         return;
       }
       
-      if (!window.confirm(`Êtes-vous sûr de vouloir supprimer le produit "${product.name}"?`)) {
-        return;
-      }
-      
-      await ProductsAPI.delete(product.id);
-      console.log('Product deleted');
-      
-      setProducts(products.filter(p => p.id !== product.id));
+      // Show confirmation dialog instead of window.confirm
+      setProductToDelete(product);
+      setShowDeleteDialog(true);
     } catch (err) {
       console.error('Error deleting product:', err);
       setError('Erreur lors de la suppression du produit. Veuillez réessayer plus tard.');
     }
   };
 
+  // Handle confirmed deletion
+  const handleConfirmDelete = async () => {
+    if (!productToDelete?.id) {
+      setError('Aucun produit sélectionné pour suppression');
+      return;
+    }
+
+    try {
+      setError(null);
+      setDeleteLoading(true);
+
+      console.log('Deleting product:', productToDelete);
+      await ProductsAPI.delete(productToDelete.id);
+      console.log('Product deleted');
+      
+      setProducts(products.filter(p => p.id !== productToDelete.id));
+      
+      // Close dialog and reset state
+      setShowDeleteDialog(false);
+      setProductToDelete(null);
+    } catch (err) {
+      console.error('Error deleting product:', err);
+      setError('Erreur lors de la suppression du produit. Veuillez réessayer plus tard.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // Handle cancel deletion
+  const handleCancelDelete = () => {
+    setShowDeleteDialog(false);
+    setProductToDelete(null);
+  };
+
   return (
     <PermissionGuard requiredPermission="view_products" fallbackPath="/">
       <Box>
-        <Box sx={{ mb: 4 }}>
-          <Typography 
-            variant="h4" 
-            component="h1" 
-            gutterBottom
-            sx={{
-              fontWeight: 700, 
-              color: theme.palette.primary.main,
-              borderBottom: `2px solid ${theme.palette.primary.light}`,
-              pb: 1,
-              width: 'fit-content'
-            }}
-          >
-            Gestion des Produits
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Gérez votre catalogue de produits
-          </Typography>
+        <Box 
+          sx={{ 
+            mb: 4,
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            justifyContent: 'space-between',
+            alignItems: { xs: 'flex-start', sm: 'center' }
+          }}
+        >
+          <Box>
+            <Typography variant="h4" component="h1" gutterBottom>
+              Gestion des Produits
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Gérez votre catalogue de produits
+            </Typography>
+          </Box>
         </Box>
 
         <Paper
@@ -394,11 +448,7 @@ const Products = () => {
               startIcon={<AddIcon />}
               onClick={() => setShowAddModal(true)}
               requiredPermission="add_product"
-              sx={{ 
-                borderRadius: '20px',
-                boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
-                px: 3
-              }}
+              sx={getStandardPrimaryButtonStyles()}
             >
               Ajouter un produit
             </PermissionButton>
@@ -422,162 +472,142 @@ const Products = () => {
               <CircularProgress />
             </Box>
           ) : (
-            <Box sx={{ height: 400, width: '100%' }}>
-              <DataGrid
-                rows={filteredProducts}
-                columns={[
-                  { field: 'name', headerName: 'Produit', flex: 1 },
-                  { field: 'reference', headerName: 'Référence', flex: 1 },
-                  { 
-                    field: 'category', 
-                    headerName: 'Catégorie', 
-                    flex: 1,
-                    valueGetter: (params) => {
-                      if (!params) return 'N/A';
-                      return getCategoryName(params);
-                    }
-                  },
-                  { 
-                    field: 'unit', 
-                    headerName: 'Unité', 
-                    flex: 1,
-                    valueGetter: (params) => {
-                      if (!params) return 'N/A';
-                      return getUnitName(params);
-                    }
-                  },
-                  { 
-                    field: 'purchase_price', 
-                    headerName: 'Prix d\'achat', 
-                    flex: 1,                    valueFormatter: (params) => {
-                      if (params === undefined || params === null) return '';
-                      return `${(params as number).toLocaleString()} GNF`;
-                    }
-                  },
-                  { 
-                    field: 'selling_price', 
-                    headerName: 'Prix de vente', 
-                    flex: 1,                    valueFormatter: (params) => {
-                      if (params === undefined || params === null) return '';
-                      return `${(params as number).toLocaleString()} GNF`;
-                    }
-                  },
-                  { 
-                    field: 'is_raw_material', 
-                    headerName: 'Type', 
-                    flex: 1,
-                    renderCell: (params: GridRenderCellParams) => (
-                      <Chip 
-                        label={params.value ? 'Matière première' : 'Produit fini'} 
-                        color={params.value ? 'warning' : 'info'}
-                        size="small"
-                        sx={{ borderRadius: '10px' }}
-                      />
-                    )
-                  },
-                  { 
-                    field: 'is_active', 
-                    headerName: 'Statut', 
-                    flex: 1,
-                    renderCell: (params: GridRenderCellParams) => (
-                      <Chip 
-                        label={params.value ? 'Actif' : 'Inactif'} 
-                        color={params.value ? 'success' : 'error'}
-                        size="small"
-                        variant="outlined"
-                        sx={{ borderRadius: '10px' }}
-                      />
-                    )
-                  },
-                  {
-                    field: 'actions',
-                    headerName: 'Actions',
-                    flex: 1,
-                    sortable: false,
-                    renderCell: (params: GridRenderCellParams) => (
-                      <Box>
-                        <IconButton
-                          color="primary"
-                          size="small"
-                          sx={{ mr: 1 }}
-                          onClick={() => handleEditProduct(params.row)}
-                          disabled={!canEditProduct}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          color="secondary"
-                          size="small"
-                          sx={{ mr: 1 }}
-                          onClick={() => {
-                            // Instead of directly opening a URL, use the fetchProductQRCode function
-                            // and create a download link for the QR code
-                            fetchProductQRCode(params.row.id)
-                              .then(blob => {
-                                // Create a temporary URL for the blob
-                                const url = URL.createObjectURL(blob);
-                                // Create a temporary link and trigger download
-                                const link = document.createElement('a');
-                                link.href = url;
-                                link.download = `qr-code-product-${params.row.id}-${params.row.name.replace(/\s+/g, '-').toLowerCase()}.png`;
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                                // Clean up the URL
-                                URL.revokeObjectURL(url);
-                              })
-                              .catch(error => {
-                                console.error('Error downloading QR code:', error);
-                                alert('Impossible de télécharger le code QR. Vérifiez votre connexion.');
-                              });
-                          }}
-                        >
-                          <QrCodeIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          color="error"
-                          size="small"
-                          onClick={() => handleDeleteProduct(params.row)}
-                          disabled={!canDeleteProduct}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    )
+            <StandardDataGrid
+              rows={filteredProducts}
+              columns={[
+                { field: 'name', headerName: 'Produit', flex: 1 },
+                { field: 'reference', headerName: 'Référence', flex: 1 },
+                { 
+                  field: 'category', 
+                  headerName: 'Catégorie', 
+                  flex: 1,
+                  valueGetter: (value, row) => {
+                    if (!row) return 'N/A';
+                    return getCategoryName(row.category);
                   }
-                ]}
-                pagination
-                paginationModel={{
-                  pageSize: 10,
-                  page: 0
-                }}
-                pageSizeOptions={[5, 10, 25]}
-                checkboxSelection={false}
-                disableRowSelectionOnClick
-                getRowId={(row) => {
-                  if (!row || row.id === undefined) return Math.random();
-                  return row.id;
-                }}
-                sx={{
-                  '& .MuiDataGrid-cell:focus': {
-                    outline: 'none',
-                  },
-                  '& .MuiDataGrid-cell:focus-within': {
-                    outline: 'none',
-                  },
-                  '& .MuiDataGrid-columnHeader:focus': {
-                    outline: 'none',
-                  },
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-                  border: 'none',
-                  borderRadius: 2,
-                  '& .MuiDataGrid-columnHeaders': {
-                    backgroundColor: 'rgba(0, 0, 0, 0.02)',
-                    borderRadius: '8px 8px 0 0',
+                },
+                { 
+                  field: 'unit', 
+                  headerName: 'Unité', 
+                  flex: 1,
+                  valueGetter: (value, row) => {
+                    if (!row) return 'N/A';
+                    return getUnitName(row.unit);
                   }
-                }}
-              />
-            </Box>
+                },
+                { 
+                  field: 'purchase_price', 
+                  headerName: 'Prix d\'achat', 
+                  flex: 1,
+                  valueGetter: (value, row) => {
+                    if (!row || row.purchase_price === undefined) return '';
+                    return `${row.purchase_price.toLocaleString()} GNF`;
+                  }
+                },
+                { 
+                  field: 'selling_price', 
+                  headerName: 'Prix de vente', 
+                  flex: 1,
+                  valueGetter: (value, row) => {
+                    if (!row || row.selling_price === undefined) return '';
+                    return `${row.selling_price.toLocaleString()} GNF`;
+                  }
+                },
+                { 
+                  field: 'is_raw_material', 
+                  headerName: 'Type', 
+                  flex: 1,
+                  renderCell: (params: GridRenderCellParams) => (
+                    <StatusChip 
+                      status={params.value ? 'raw_material' : 'finished_product'}
+                      size="small"
+                    />
+                  )
+                },
+                { 
+                  field: 'is_active', 
+                  headerName: 'Statut', 
+                  flex: 1,
+                  renderCell: (params: GridRenderCellParams) => (
+                    <StatusChip 
+                      status={params.value ? 'active' : 'inactive'}
+                      size="small"
+                    />
+                  )
+                },
+                {
+                  field: 'actions',
+                  headerName: 'Actions',
+                  flex: 1,
+                  sortable: false,
+                  renderCell: (params: GridRenderCellParams) => (
+                    <Box>
+                      <IconButton
+                        color="primary"
+                        size="small"
+                        sx={{ mr: 1 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditProduct(params.row);
+                        }}
+                        disabled={!canEditProduct}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        color="secondary"
+                        size="small"
+                        sx={{ mr: 1 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Instead of directly opening a URL, use the fetchProductQRCode function
+                          // and create a download link for the QR code
+                          fetchProductQRCode(params.row.id)
+                            .then(blob => {
+                              // Create a temporary URL for the blob
+                              const url = URL.createObjectURL(blob);
+                              // Create a temporary link and trigger download
+                              const link = document.createElement('a');
+                              link.href = url;
+                              link.download = `qr-code-product-${params.row.id}-${params.row.name.replace(/\s+/g, '-').toLowerCase()}.png`;
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                              // Clean up the URL
+                              URL.revokeObjectURL(url);
+                            })
+                            .catch(error => {
+                              console.error('Error downloading QR code:', error);
+                              alert('Impossible de télécharger le code QR. Vérifiez votre connexion.');
+                            });
+                        }}
+                      >
+                        <QrCodeIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        color="error"
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteProduct(params.row);
+                        }}
+                        disabled={!canDeleteProduct}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  )
+                }
+              ]}
+              paginationModel={paginationModel}
+              onPaginationModelChange={setPaginationModel}
+              onRowClick={handleRowClick}
+              loading={loading}
+              getRowId={(row) => {
+                if (!row || row.id === undefined) return Math.random();
+                return row.id;
+              }}
+            />
           )}
         </Paper>
 
@@ -726,17 +756,14 @@ const Products = () => {
           <DialogActions sx={{ p: 2, pt: 0 }}>
             <Button 
               onClick={() => setShowAddModal(false)}
-              sx={{ borderRadius: '20px' }}
+              sx={getStandardSecondaryButtonStyles()}
             >
               Annuler
             </Button>
             <Button 
               variant="contained"
               onClick={handleAddProduct}
-              sx={{ 
-                borderRadius: '20px',
-                boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
-              }}
+              sx={getStandardPrimaryButtonStyles()}
             >
               Ajouter
             </Button>
@@ -911,19 +938,76 @@ const Products = () => {
           <DialogActions sx={{ p: 2, pt: 0 }}>
             <Button 
               onClick={() => setShowEditModal(false)}
-              sx={{ borderRadius: '20px' }}
+              sx={getStandardSecondaryButtonStyles()}
             >
               Annuler
             </Button>
             <Button 
               variant="contained"
               onClick={handleSaveEdit}
-              sx={{ 
-                borderRadius: '20px',
-                boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
-              }}
+              sx={getStandardPrimaryButtonStyles()}
             >
               Enregistrer
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog 
+          open={showDeleteDialog} 
+          onClose={handleCancelDelete}
+          PaperProps={{
+            sx: {
+              borderRadius: 2,
+              boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+              backgroundColor: 'background.paper'
+            }
+          }}
+        >
+          <DialogTitle sx={{ 
+            backgroundColor: 'error.main', 
+            color: '#fff',
+            fontWeight: 'bold'
+          }}>
+            Confirmation de suppression
+          </DialogTitle>
+          <DialogContent sx={{ 
+            p: 3, 
+            mt: 2, 
+            backgroundColor: 'background.paper' 
+          }}>
+            <DialogContentText color="text.primary" sx={{ mb: 2 }}>
+              Êtes-vous sûr de vouloir supprimer le produit <strong>{productToDelete?.name}</strong> ?
+            </DialogContentText>
+            
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              ⚠️ Cette action supprimera définitivement le produit et ses données associées.
+            </Alert>
+            
+            <Alert severity="error">
+              Cette action est irréversible.
+            </Alert>
+          </DialogContent>
+          <DialogActions sx={{ 
+            p: 2, 
+            backgroundColor: 'rgba(0,0,0,0.02)'
+          }}>
+            <Button 
+              onClick={handleCancelDelete} 
+              disabled={deleteLoading}
+              sx={getStandardSecondaryButtonStyles()}
+            >
+              Annuler
+            </Button>
+            <Button 
+              variant="contained" 
+              color="error" 
+              onClick={handleConfirmDelete}
+              disabled={deleteLoading}
+              startIcon={deleteLoading ? <CircularProgress size={20} color="inherit" /> : <DeleteIcon />}
+              sx={getStandardPrimaryButtonStyles()}
+            >
+              {deleteLoading ? 'Suppression...' : 'Supprimer'}
             </Button>
           </DialogActions>
         </Dialog>

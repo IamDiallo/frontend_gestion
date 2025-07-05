@@ -3,30 +3,22 @@ import {
   Box,
   Typography,
   Paper,
-  TextField,
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Grid,
   CircularProgress,
   IconButton,
   InputAdornment,
   Alert,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Snackbar
+  Snackbar,
+  Tooltip
 } from '@mui/material';
+import { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
+import { 
+  StandardButton, 
+  StandardDataGrid, 
+  StandardTextField, 
+  StatusChip,
+  ContactDialog 
+} from './common';
+import { t } from '../utils/translations';
 import { 
   Add as AddIcon, 
   Edit as EditIcon, 
@@ -42,7 +34,6 @@ import { PriceGroup } from '../interfaces/products';
 import { SnackbarState } from '../interfaces/common';
 import PermissionGuard from './PermissionGuard';
 import { usePermissionCheck } from '../hooks/usePermissionCheck';
-import PermissionButton from './common/PermissionButton';
 
 const Clients = () => {
   // Add permission checks
@@ -53,8 +44,19 @@ const Clients = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [formData, setFormData] = useState<Omit<Client, 'id'>>({
+    name: '',
+    contact_person: '',
+    email: '',
+    phone: '',
+    address: '',
+    price_group: 1,
+    account: undefined,
+    is_active: true,
+  });
+  const [editMode, setEditMode] = useState(false);
+  const [currentId, setCurrentId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState<SnackbarState>({
     open: false,
@@ -72,18 +74,12 @@ const Clients = () => {
   // Replace static accounts with dynamic ones
   const [availableAccounts, setAvailableAccounts] = useState<Account[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
-  
-  const [newClient, setNewClient] = useState<Omit<Client, 'id'>>({
-    name: '',
-    contact_person: '',
-    email: '',
-    phone: '',
-    address: '',
-    price_group: 1,
-    account: undefined,
-    is_active: true,
+
+  // Pagination state for DataGrid
+  const [paginationModel, setPaginationModel] = useState({
+    page: 0,
+    pageSize: 10,
   });
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
 
   // Helper function to get price group name by ID
   const getPriceGroupName = (priceGroupId?: number): string => {
@@ -92,11 +88,11 @@ const Clients = () => {
     return priceGroup ? priceGroup.name : 'Inconnu';
   };
 
-  // Helper function to get account name by ID
-  const getAccountName = (accountId?: number): string => {
-    if (!accountId) return 'Aucun';
-    const account = availableAccounts.find(a => a.id === accountId);
-    return account ? account.name : 'Inconnu';
+  // Handle row click to edit client
+  const handleRowClick = (params: { row: Client }) => {
+    if (canEditClient) {
+      handleOpenDialog(params.row);
+    }
   };
 
   useEffect(() => {
@@ -137,10 +133,10 @@ const Clients = () => {
       }
     };
 
-    if (showAddModal || showEditModal) {
+    if (openDialog) {
       fetchAvailableAccounts();
     }
-  }, [showAddModal, showEditModal, clients]);
+  }, [openDialog, clients]);
 
   const filteredClients = clients.filter((client) =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -149,48 +145,22 @@ const Clients = () => {
     client.phone.includes(searchTerm)
   );
 
-  const handleAddClient = async () => {
-    try {
-      setError(null);
-      
-      // Validate required fields
-      if (!newClient.name) {
-        setError('Le nom du client est requis');
-        return;
-      }
-      
-      if (!newClient.contact_person) {
-        setError('Le nom du contact est requis');
-        return;
-      }
-      
-      if (!newClient.email) {
-        setError('L\'email est requis');
-        return;
-      }
-      
-      if (!newClient.phone) {
-        setError('Le téléphone est requis');
-        return;
-      }
-      
-      if (!newClient.address) {
-        setError('L\'adresse est requise');
-        return;
-      }
-      
-      if (!newClient.price_group) {
-        setError('Le groupe de prix est requis');
-        return;
-      }
-      
-      // Le backend va créer un compte automatiquement
-      console.log('Creating client:', newClient);
-      
-      const createdClient = await ClientsAPI.create(newClient as Client);
-      setClients([...clients, createdClient]);
-      setShowAddModal(false);
-      setNewClient({
+  const handleOpenDialog = (client?: Client) => {
+    if (client) {
+      setFormData({
+        name: client.name,
+        contact_person: client.contact_person,
+        email: client.email,
+        phone: client.phone,
+        address: client.address,
+        price_group: client.price_group,
+        account: client.account,
+        is_active: client.is_active
+      });
+      setEditMode(true);
+      setCurrentId(client.id!);
+    } else {
+      setFormData({
         name: '',
         contact_person: '',
         email: '',
@@ -200,37 +170,121 @@ const Clients = () => {
         account: undefined,
         is_active: true,
       });
+      setEditMode(false);
+      setCurrentId(null);
+    }
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+  };
+
+  const handleAccountChange = (value: number | '') => {
+    setFormData(prev => ({ ...prev, account: value === '' ? undefined : value }));
+  };
+
+  const handlePriceGroupChange = (value: number) => {
+    setFormData(prev => ({ ...prev, price_group: value }));
+  };
+
+  // Handle form data changes for ContactDialog
+  const handleFormDataChange = (data: typeof formData) => {
+    setFormData(data);
+  };
+
+  const handleSubmit = async () => {
+    try {
+      // Validate required fields
+      if (!formData.name) {
+        setSnackbar({
+          open: true,
+          message: 'Le nom du client est requis',
+          severity: 'error'
+        });
+        return;
+      }
       
-      setSnackbar({
-        open: true,
-        message: 'Client créé avec succès',
-        severity: 'success'
-      });
-    } catch (err: unknown) {
-      console.error('Error creating client:', err);
+      if (!formData.contact_person) {
+        setSnackbar({
+          open: true,
+          message: 'Le nom du contact est requis',
+          severity: 'error'
+        });
+        return;
+      }
       
-      let errorMessage = 'Erreur lors de la création du client. Veuillez réessayer plus tard.';
+      if (!formData.email) {
+        setSnackbar({
+          open: true,
+          message: 'L\'email est requis',
+          severity: 'error'
+        });
+        return;
+      }
       
-      // Check for specific error messages from the API
-      if (err && typeof err === 'object' && 'response' in err && 
-          err.response && typeof err.response === 'object' && 
-          'data' in err.response && err.response.data) {
-        const errorData = err.response.data;
-        
-        if (typeof errorData === 'object' && 'error' in errorData) {
-          errorMessage = String(errorData.error);
-        } else if (typeof errorData === 'object') {
-          // Format error messages from the API
+      if (!formData.phone) {
+        setSnackbar({
+          open: true,
+          message: 'Le téléphone est requis',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      if (!formData.address) {
+        setSnackbar({
+          open: true,
+          message: 'L\'adresse est requise',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      if (!formData.price_group) {
+        setSnackbar({
+          open: true,
+          message: 'Le groupe de prix est requis',
+          severity: 'error'
+        });
+        return;
+      }
+
+      if (editMode && currentId) {
+        // Update client via API
+        await ClientsAPI.update(currentId, formData as Client);
+        const data = await ClientsAPI.getAll();
+        setClients(data);
+        setSnackbar({
+          open: true,
+          message: 'Client mis à jour avec succès',
+          severity: 'success'
+        });
+      } else {
+        // Add client via API
+        await ClientsAPI.create(formData as Client);
+        const data = await ClientsAPI.getAll();
+        setClients(data);
+        setSnackbar({
+          open: true,
+          message: 'Client ajouté avec succès',
+          severity: 'success'
+        });
+      }
+      handleCloseDialog();
+    } catch (error: unknown) {
+      let errorMessage = 'Erreur lors de l\'enregistrement du client';
+      if (error && typeof error === 'object' && 'response' in error && 
+          error.response && typeof error.response === 'object' && 
+          'data' in error.response && error.response.data) {
+        const errorData = error.response.data;
+        if (typeof errorData === 'object') {
           const errorMessages = Object.entries(errorData)
             .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : String(errors)}`)
             .join('\n');
-          
-          if (errorMessages) {
-            errorMessage = `Erreurs: ${errorMessages}`;
-          }
+          if (errorMessages) errorMessage = `Erreurs: ${errorMessages}`;
         }
       }
-      
       setSnackbar({
         open: true,
         message: errorMessage,
@@ -239,63 +293,9 @@ const Clients = () => {
     }
   };
 
-  const handleEditClient = async (client: Client) => {
-    setEditingClient(client);
-    setShowEditModal(true);
-  };
-
-  const handleSaveEdit = async () => {
-    try {
-      setError(null);
-      
-      if (!editingClient) {
-        setError('Client à éditer manquant');
-        return;
-      }
-      
-      if (!editingClient.id) {
-        setError('ID du client manquant');
-        return;
-      }
-      
-      // Validate required fields
-      if (!editingClient.name) {
-        setError('Le nom du client est requis');
-        return;
-      }
-      
-      console.log('Updating client:', editingClient);
-      const updatedClient = await ClientsAPI.update(editingClient.id, editingClient);
-      console.log('Client updated:', updatedClient);
-      
-      // Update the local state
-      setClients(clients.map(c => c.id === editingClient.id ? updatedClient : c));
-      setShowEditModal(false);
-      setEditingClient(null);
-    } catch (err: unknown) {
-      console.error('Error updating client:', err);
-      
-      let errorMessage = 'Erreur lors de la mise à jour du client. Veuillez réessayer plus tard.';
-      
-      // Check for specific error messages from the API
-      if (err && typeof err === 'object' && 'response' in err && 
-          err.response && typeof err.response === 'object' && 
-          'data' in err.response && err.response.data) {
-        const errorData = err.response.data;
-        if (typeof errorData === 'object') {
-          // Format error messages from the API
-          const errorMessages = Object.entries(errorData)
-            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
-            .join('\n');
-          
-          if (errorMessages) {
-            errorMessage = `Erreurs: ${errorMessages}`;
-          }
-        }
-      }
-      
-      setError(errorMessage);
-    }
+  // Snackbar close handler
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
   };
 
   const handleDeleteClient = async (client: Client) => {
@@ -342,6 +342,117 @@ const Clients = () => {
     }
   };
 
+  // DataGrid columns definition
+  // Clients DataGrid columns
+  const clientsColumns: GridColDef[] = [
+    {
+      field: 'name',
+      headerName: t('company'),
+      flex: 1.2,
+      renderCell: (params: GridRenderCellParams) => (
+        <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+          {params.row.name}
+        </Typography>
+      )
+    },
+    {
+      field: 'contact_person',
+      headerName: t('contactPerson'),
+      flex: 1,
+      renderCell: (params: GridRenderCellParams) => (
+        <Typography variant="body2">
+          {params.row.contact_person}
+        </Typography>
+      )
+    },
+    {
+      field: 'phone',
+      headerName: t('phone'),
+      flex: 1,
+      renderCell: (params: GridRenderCellParams) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <PhoneIcon fontSize="small" color="action" />
+          <Typography variant="body2">{params.row.phone}</Typography>
+        </Box>
+      )
+    },
+    {
+      field: 'email',
+      headerName: t('email'),
+      flex: 1.2,
+      renderCell: (params: GridRenderCellParams) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <EmailIcon fontSize="small" color="action" />
+          <Typography variant="body2">{params.row.email}</Typography>
+        </Box>
+      )
+    },
+    {
+      field: 'address',
+      headerName: t('address'),
+      flex: 1.3,
+      renderCell: (params: GridRenderCellParams) => (
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+          <LocationIcon fontSize="small" color="action" sx={{ mt: 0.25 }} />
+          <Typography variant="body2">{params.row.address}</Typography>
+        </Box>
+      )
+    },
+    {
+      field: 'price_group',
+      headerName: t('priceGroup'),
+      flex: 0.8,
+      valueGetter: (value, row) => getPriceGroupName(row.price_group)
+    },
+    {
+      field: 'is_active',
+      headerName: t('status'),
+      flex: 0.7,
+      renderCell: (params: GridRenderCellParams) => (
+        <StatusChip 
+          status={params.row.is_active ? 'active' : 'inactive'}
+        />
+      )
+    },
+    {
+      field: 'actions',
+      headerName: t('actions'),
+      flex: 0.8,
+      sortable: false,
+      renderCell: (params: GridRenderCellParams) => (
+        <Box>
+          <Tooltip title={t('edit')}>
+            <IconButton 
+              color="primary" 
+              size="small" 
+              sx={{ mr: 1 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenDialog(params.row);
+              }}
+              disabled={!canEditClient}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={t('delete')}>
+            <IconButton 
+              color="error" 
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteClient(params.row);
+              }}
+              disabled={!canDeleteClient}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )
+    }
+  ];
+
   return (
     <PermissionGuard requiredPermission="view_clients" fallbackPath="/">
       <Box>
@@ -363,12 +474,9 @@ const Clients = () => {
             mb: 3,
             gap: 2
           }}>
-            <TextField
-              label="Rechercher"
+            <StandardTextField
+              label={t('search')}
               placeholder="Nom, contact, email ou téléphone"
-              variant="outlined"
-              size="small"
-              fullWidth
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               sx={{ maxWidth: { md: 400 } }}
@@ -379,15 +487,16 @@ const Clients = () => {
                   </InputAdornment>
                 ),
               }}
-            />            <PermissionButton
+            />
+            <StandardButton
               variant="contained"
               color="primary"
               startIcon={<AddIcon />}
-              onClick={() => setShowAddModal(true)}
-              requiredPermission="add_client"
+              onClick={() => handleOpenDialog()}
+              disabled={!canPerform('add_client')}
             >
-              Ajouter un client
-            </PermissionButton>
+              {t('addClient')}
+            </StandardButton>
           </Box>
 
           {error && (
@@ -401,282 +510,55 @@ const Clients = () => {
               <CircularProgress />
             </Box>
           ) : (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Client</TableCell>
-                    <TableCell>Contact</TableCell>
-                    <TableCell>Coordonnées</TableCell>
-                    <TableCell>Groupe de prix</TableCell>
-                    <TableCell>Compte</TableCell>
-                    <TableCell>Statut</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredClients.map((client) => (
-                    <TableRow key={client.id}>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
-                          {client.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {client.contact_person}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <PhoneIcon fontSize="small" color="action" />
-                          {client.phone}
-                        </Box>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                          <EmailIcon fontSize="small" color="action" />
-                          {client.email}
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                          <LocationIcon fontSize="small" color="action" sx={{ mt: 0.25 }} />
-                          <Typography variant="body2">{client.address}</Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell>{getPriceGroupName(client.price_group)}</TableCell>
-                      <TableCell>{getAccountName(client.account)}</TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={client.is_active ? 'Actif' : 'Inactif'} 
-                          color={client.is_active ? 'success' : 'error'}
-                          size="small"
-                          variant="outlined"
-                        />
-                      </TableCell>
-                      <TableCell align="right">
-                        <IconButton 
-                          color="primary" 
-                          size="small" 
-                          sx={{ mr: 1 }}
-                          onClick={() => handleEditClient(client)}
-                          disabled={!canEditClient}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton 
-                          color="error" 
-                          size="small"
-                          onClick={() => handleDeleteClient(client)}
-                          disabled={!canDeleteClient}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            <StandardDataGrid
+              rows={filteredClients}
+              columns={clientsColumns}
+              paginationModel={paginationModel}
+              onPaginationModelChange={setPaginationModel}
+              loading={loading}
+              getRowId={(row) => row.id || Math.random()}
+              onRowClick={handleRowClick}
+              sx={{
+                minHeight: 400,
+                '& .MuiDataGrid-row': {
+                  cursor: 'pointer'
+                }
+              }}
+            />
           )}
         </Paper>
 
-        {/* Add Client Dialog */}
-        <Dialog open={showAddModal} onClose={() => setShowAddModal(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Ajouter un nouveau client</DialogTitle>
-          <DialogContent>
-            <Grid container spacing={2} sx={{ mt: 1 }}>
-              <Grid item xs={12}>
-                <TextField
-                  label="Nom"
-                  fullWidth
-                  value={newClient.name}
-                  onChange={(e) => setNewClient({...newClient, name: e.target.value})}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  label="Nom du contact"
-                  fullWidth
-                  value={newClient.contact_person}
-                  onChange={(e) => setNewClient({...newClient, contact_person: e.target.value})}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Email"
-                  fullWidth
-                  type="email"
-                  value={newClient.email}
-                  onChange={(e) => setNewClient({...newClient, email: e.target.value})}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Téléphone"
-                  fullWidth
-                  value={newClient.phone}
-                  onChange={(e) => setNewClient({...newClient, phone: e.target.value})}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  label="Adresse"
-                  fullWidth
-                  multiline
-                  rows={2}
-                  value={newClient.address}
-                  onChange={(e) => setNewClient({...newClient, address: e.target.value})}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Groupe de prix</InputLabel>
-                  <Select
-                    value={newClient.price_group || ''}
-                    onChange={(e) => setNewClient({...newClient, price_group: Number(e.target.value)})}
-                    label="Groupe de prix"
-                  >
-                    {priceGroups.map((priceGroup) => (
-                      <MenuItem key={priceGroup.id} value={priceGroup.id}>{priceGroup.name}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth required>
-                  <InputLabel>Compte</InputLabel>
-                  <Select
-                    value={newClient.account || ''}
-                    onChange={(e) => setNewClient({...newClient, account: Number(e.target.value) || undefined})}
-                    label="Compte"
-                  >
-                    <MenuItem value="">Sélectionner un compte</MenuItem>
-                    {loadingAccounts ? (
-                      <MenuItem disabled>Chargement des comptes...</MenuItem>
-                    ) : availableAccounts.length === 0 ? (
-                      <MenuItem disabled>Aucun compte client disponible</MenuItem>
-                    ) : (
-                      availableAccounts.map((account) => (
-                        <MenuItem key={account.id} value={account.id}>{account.name}</MenuItem>
-                      ))
-                    )}
-                  </Select>
-                  {availableAccounts.length === 0 && !loadingAccounts && (
-                    <Typography variant="caption" color="error" sx={{ mt: 1 }}>
-                      Aucun compte client disponible. Veuillez d'abord créer un compte de type client dans la section Trésorerie.
-                    </Typography>
-                  )}
-                </FormControl>
-              </Grid>
-            </Grid>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowAddModal(false)}>Annuler</Button>
-            <Button variant="contained" onClick={handleAddClient}>Ajouter</Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Edit Client Dialog */}
-        <Dialog open={showEditModal} onClose={() => setShowEditModal(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Modifier un client</DialogTitle>
-          <DialogContent>
-            {editingClient && (
-              <Grid container spacing={2} sx={{ mt: 1 }}>
-                <Grid item xs={12}>
-                  <TextField
-                    label="Nom"
-                    fullWidth
-                    value={editingClient.name}
-                    onChange={(e) => setEditingClient({...editingClient, name: e.target.value})}
-                    required
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    label="Nom du contact"
-                    fullWidth
-                    value={editingClient.contact_person}
-                    onChange={(e) => setEditingClient({...editingClient, contact_person: e.target.value})}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label="Email"
-                    fullWidth
-                    type="email"
-                    value={editingClient.email}
-                    onChange={(e) => setEditingClient({...editingClient, email: e.target.value})}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label="Téléphone"
-                    fullWidth
-                    value={editingClient.phone}
-                    onChange={(e) => setEditingClient({...editingClient, phone: e.target.value})}
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    label="Adresse"
-                    fullWidth
-                    multiline
-                    rows={3}
-                    value={editingClient.address}
-                    onChange={(e) => setEditingClient({...editingClient, address: e.target.value})}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Groupe de prix</InputLabel>
-                    <Select
-                      value={editingClient.price_group || ''}
-                      onChange={(e) => setEditingClient({...editingClient, price_group: Number(e.target.value)})}
-                      label="Groupe de prix"
-                    >
-                      {priceGroups.map((priceGroup) => (
-                        <MenuItem key={priceGroup.id} value={priceGroup.id}>{priceGroup.name}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth required>
-                    <InputLabel>Compte</InputLabel>
-                    <Select
-                      value={editingClient.account || ''}
-                      onChange={(e) => setEditingClient({...editingClient, account: Number(e.target.value)})}
-                      label="Compte"
-                    >
-                      <MenuItem value="">Sélectionner un compte</MenuItem>
-                      {availableAccounts.map((account) => (
-                        <MenuItem key={account.id} value={account.id}>{account.name}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              </Grid>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowEditModal(false)}>Annuler</Button>
-            <Button variant="contained" onClick={handleSaveEdit}>Enregistrer</Button>
-          </DialogActions>
-        </Dialog>
+        {/* Add/Edit Client Dialog */}
+        <ContactDialog
+          open={openDialog}
+          editMode={editMode}
+          contactType="client"
+          formData={formData}
+          availableAccounts={availableAccounts.map(a => ({ id: a.id, name: a.name }))}
+          loadingAccounts={loadingAccounts}
+          priceGroups={priceGroups}
+          onClose={handleCloseDialog}
+          onSubmit={handleSubmit}
+          onFormDataChange={handleFormDataChange}
+          onAccountChange={handleAccountChange}
+          onPriceGroupChange={handlePriceGroupChange}
+        />
 
         {/* Snackbar pour les notifications */}
         <Snackbar 
           open={snackbar.open} 
           autoHideDuration={6000} 
-          onClose={() => setSnackbar({...snackbar, open: false})}
+          onClose={handleCloseSnackbar}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         >
           <Alert 
-            onClose={() => setSnackbar({...snackbar, open: false})} 
-            severity={snackbar.severity as 'success' | 'error' | 'info' | 'warning'} 
-            sx={{ width: '100%' }}
+            onClose={handleCloseSnackbar} 
+            severity={snackbar.severity}
+            variant="filled"
+            sx={{ 
+              borderRadius: 2,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
+            }}
           >
             {snackbar.message}
           </Alert>
