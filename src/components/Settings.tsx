@@ -14,6 +14,11 @@ import {
 import CheckIcon from '@mui/icons-material/Check';
 import PermissionGuard from './PermissionGuard';
 import { SettingsAPI } from '../services/api';
+import { 
+  validateDecimalInput, 
+  formatNumberDisplay, 
+  getValidationError 
+} from '../utils/inputValidation';
 
 const Settings = () => {
   const theme = useTheme();
@@ -329,13 +334,20 @@ const Settings = () => {
             <TextField 
               name="discount_percentage"
               label="Pourcentage de remise"
-              value={formData.discount_percentage}
-              onChange={handleFormChange}
-              type="number"
+              value={formatNumberDisplay(formData.discount_percentage)}
+              onChange={(e) => {
+                const newValue = validateDecimalInput(e.target.value, formData.discount_percentage);
+                setFormData({...formData, discount_percentage: newValue});
+              }}
+              type="text"
               fullWidth
               margin="normal"
               variant="outlined"
-              inputProps={{ min: 0, max: 100, step: 0.01 }}
+              error={formData.discount_percentage < 0 || formData.discount_percentage > 100}
+              helperText={
+                formData.discount_percentage < 0 ? "Le pourcentage doit être positif" :
+                formData.discount_percentage > 100 ? "Le pourcentage ne peut pas dépasser 100" : ""
+              }
             />
             <TextField 
               name="description"
@@ -445,12 +457,17 @@ const Settings = () => {
             <TextField 
               name="initial_balance"
               label="Solde initial"
-              value={formData.initial_balance || 0}
-              onChange={handleFormChange}
-              type="number"
+              value={formatNumberDisplay(formData.initial_balance || 0)}
+              onChange={(e) => {
+                const newValue = validateDecimalInput(e.target.value, formData.initial_balance || 0);
+                setFormData({...formData, initial_balance: newValue});
+              }}
+              type="text"
               fullWidth
               margin="normal"
               variant="outlined"
+              error={(formData.initial_balance || 0) < 0}
+              helperText={getValidationError(formData.initial_balance || 0, 'price')}
             />
             
             <TextField 

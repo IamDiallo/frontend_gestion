@@ -33,6 +33,12 @@ import {
   UnitsOfMeasureAPI,
   fetchProductQRCode, // Make sure this is imported if used elsewhere
 } from '../services/api';
+import { 
+  validateDecimalInput, 
+  validateIntegerInput,
+  formatNumberDisplay, 
+  getValidationError 
+} from '../utils/inputValidation';
 import { useTheme } from '@mui/material/styles';
 import PermissionGuard from './PermissionGuard';
 import { usePermissionCheck } from '../hooks/usePermissionCheck';
@@ -659,28 +665,42 @@ const Products = () => {
                 <TextField
                   label="Prix d'achat"
                   fullWidth
-                  type="number"
-                  value={newProduct.purchase_price}
-                  onChange={(e) => setNewProduct({...newProduct, purchase_price: Number(e.target.value)})}
+                  type="text"
+                  value={formatNumberDisplay(newProduct.purchase_price)}
+                  onChange={(e) => {
+                    const newValue = validateDecimalInput(e.target.value, newProduct.purchase_price);
+                    setNewProduct({...newProduct, purchase_price: newValue});
+                  }}
+                  error={newProduct.purchase_price < 0}
+                  helperText={getValidationError(newProduct.purchase_price, 'price')}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
                   label="Prix de vente"
                   fullWidth
-                  type="number"
-                  value={newProduct.selling_price}
-                  onChange={(e) => setNewProduct({...newProduct, selling_price: Number(e.target.value)})}
+                  type="text"
+                  value={formatNumberDisplay(newProduct.selling_price)}
+                  onChange={(e) => {
+                    const newValue = validateDecimalInput(e.target.value, newProduct.selling_price);
+                    setNewProduct({...newProduct, selling_price: newValue});
+                  }}
+                  error={newProduct.selling_price < 0}
+                  helperText={getValidationError(newProduct.selling_price, 'price')}
                 />
               </Grid>
               <Grid item xs={12} sm={6}> {/* Add Grid item for min_stock_level */}
                 <TextField
                   label="Niveau Stock Min."
                   fullWidth
-                  type="number"
-                  value={newProduct.min_stock_level}
-                  onChange={(e) => setNewProduct({...newProduct, min_stock_level: Number(e.target.value)})}
-                  InputProps={{ inputProps: { min: 0 } }}
+                  type="text"
+                  value={formatNumberDisplay(newProduct.min_stock_level)}
+                  onChange={(e) => {
+                    const newValue = validateIntegerInput(e.target.value, newProduct.min_stock_level);
+                    setNewProduct({...newProduct, min_stock_level: newValue});
+                  }}
+                  error={newProduct.min_stock_level < 0}
+                  helperText={getValidationError(newProduct.min_stock_level, 'stock')}
                 />
               </Grid>
               <Grid item xs={6}>
@@ -818,28 +838,39 @@ const Products = () => {
                   <TextField
                     label="Prix d'achat"
                     fullWidth
-                    type="number"
-                    value={editingProduct.purchase_price}
-                    onChange={(e) => setEditingProduct({...editingProduct, purchase_price: Number(e.target.value)})}
+                    type="text"
+                    value={formatNumberDisplay(editingProduct.purchase_price)}
+                    onChange={(e) => {
+                      const newValue = validateDecimalInput(e.target.value, editingProduct.purchase_price);
+                      setEditingProduct({...editingProduct, purchase_price: newValue});
+                    }}                  error={(editingProduct.purchase_price ?? 0) < 0}
+                  helperText={getValidationError(editingProduct.purchase_price, 'price')}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField
                     label="Prix de vente"
                     fullWidth
-                    type="number"
-                    value={editingProduct.selling_price}
-                    onChange={(e) => setEditingProduct({...editingProduct, selling_price: Number(e.target.value)})}
+                    type="text"
+                    value={formatNumberDisplay(editingProduct.selling_price)}
+                    onChange={(e) => {
+                      const newValue = validateDecimalInput(e.target.value, editingProduct.selling_price);
+                      setEditingProduct({...editingProduct, selling_price: newValue});
+                    }}                  error={(editingProduct.selling_price ?? 0) < 0}
+                  helperText={getValidationError(editingProduct.selling_price, 'price')}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}> {/* Add Grid item for min_stock_level */}
                   <TextField
                     label="Niveau Stock Min."
                     fullWidth
-                    type="number"
-                    value={editingProduct.min_stock_level}
-                    onChange={(e) => setEditingProduct({...editingProduct, min_stock_level: Number(e.target.value)})}
-                    InputProps={{ inputProps: { min: 0 } }}
+                    type="text"
+                    value={formatNumberDisplay(editingProduct.min_stock_level)}
+                    onChange={(e) => {
+                      const newValue = validateIntegerInput(e.target.value, editingProduct.min_stock_level);
+                      setEditingProduct({...editingProduct, min_stock_level: newValue});
+                    }}                  error={(editingProduct.min_stock_level ?? 0) < 0}
+                  helperText={getValidationError(editingProduct.min_stock_level, 'stock')}
                   />
                 </Grid>
                 <Grid item xs={6}>

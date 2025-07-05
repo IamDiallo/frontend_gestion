@@ -31,6 +31,9 @@ export interface ExtendedSale extends Omit<Sale, 'client'> {
   client: number;
   client_name?: string;
   zone_name?: string;
+  paid_amount?: number;
+  remaining_amount?: number;
+  balance?: number;
 }
 
 // OutstandingSale interface for sales with payment information
@@ -123,4 +126,36 @@ export interface Zone {
   name: string;
   address: string;
   description?: string;
+}
+
+// Sale deletion interfaces
+export interface SaleDeletionSummary {
+  sale_reference: string;
+  client_name: string;
+  total_amount: number;
+  paid_amount: number;
+  stock_restored: Array<{
+    product: string;
+    quantity: number;
+    zone: string;
+  }>;
+  payment_refunded: number;
+  deleted_at: string;
+}
+
+export interface SaleDeletionResponse {
+  success: boolean;
+  message: string;
+  deletion_summary: SaleDeletionSummary;
+}
+
+export interface SaleCanDeleteResponse {
+  can_delete: boolean;
+  sale_reference: string;
+  current_status: string;
+  current_status_display: string;
+  reason: string;
+  will_restore_stock?: boolean;
+  will_refund_amount?: number;
+  has_payments?: boolean;
 }

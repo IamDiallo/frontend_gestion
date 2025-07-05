@@ -9,6 +9,7 @@ import {
   Dialog,
   DialogActions,
   DialogContent,
+  DialogContentText,
   DialogTitle,
   Grid,
   MenuItem,
@@ -32,8 +33,17 @@ import {
   Snackbar,
   InputAdornment,
   Tooltip,
+  Card,
+  LinearProgress,
+  styled
 } from '@mui/material';
 import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
+import { 
+  validateIntegerInput, 
+  validateDecimalInput, 
+  formatNumberDisplay, 
+  getValidationError
+} from '../utils/inputValidation';
 import { 
   Add as AddIcon, 
   Edit as EditIcon, 
@@ -50,7 +60,8 @@ import {
   Cancel,
   CheckCircle,
   ElectricBolt,
-  Payments
+  Payments,
+  Warning
 } from '@mui/icons-material';
 import { SalesAPI, ClientsAPI, ProductsAPI, InventoryAPI, ZonesAPI, InvoicesAPI, QuotesAPI } from '../services/api';
 import { Sale, Client, Zone, ApiSaleItem, ApiInvoice, ApiQuote, ExtendedInvoice } from '../interfaces/sales';
@@ -90,6 +101,9 @@ function TabPanel(props: TabPanelProps) {
 // Define the ExtendedSale interface with client as Client object instead of number
 interface ExtendedSale extends Omit<Sale, 'client'> {
   client: number;
+  paid_amount?: number;
+  remaining_amount?: number;
+  balance?: number;
 }
 
 // Define a local SaleItem interface that includes product_name
@@ -138,6 +152,8 @@ const Sales = () => {
   const [quoteSearchTerm, setQuoteSearchTerm] = useState('');
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('');
   const [quoteStatusFilter, setQuoteStatusFilter] = useState('');
+  const [invoiceDateFilter, setInvoiceDateFilter] = useState('');
+  const [quoteDateFilter, setQuoteDateFilter] = useState('');
   const [showAddInvoiceModal, setShowAddInvoiceModal] = useState(false);
   const [showAddQuoteModal, setShowAddQuoteModal] = useState(false);
   const [selectedSale, setSelectedSale] = useState<ExtendedSale | null>(null);  const [editingInvoice, setEditingInvoice] = useState<ExtendedInvoice | null>(null);
@@ -149,6 +165,37 @@ const Sales = () => {
   const [editingQuote, setEditingQuote] = useState<ApiQuote | null>(null);
   const [showEditQuoteModal, setShowEditQuoteModal] = useState(false);
   
+  // Add delete confirmation dialog state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [saleToDelete, setSaleToDelete] = useState<ExtendedSale | null>(null);
+  const [deleteConfirmationInfo, setDeleteConfirmationInfo] = useState<{
+    willRestoreStock: boolean;
+    willRefundAmount: number;
+    hasPayments: boolean;
+  } | null>(null);
+  
+  // Add new state variables for improved invoice and quote forms
+  const [newInvoiceData, setNewInvoiceData] = useState<{
+    date?: string;
+    due_date?: string;
+    notes?: string;
+  }>({});
+  const [newQuoteData, setNewQuoteData] = useState<{
+    date?: string;
+    expiry_date?: string;
+    notes?: string;
+  }>({});
+  
+  // Styled components for better visuals
+const PaymentInfoCard = styled(Card)(() => ({
+  borderRadius: 12,
+  transition: 'transform 0.2s, box-shadow 0.2s',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
+  },
+}));
+
   // Utility functions for UI components
 const getStatusLabel = (status: string): string => {
   switch (status) {
@@ -186,6 +233,54 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
   }
 };
 
+// Invoice status utility functions
+const getInvoiceStatusLabel = (status: string): string => {
+  switch (status) {
+    case 'draft': return 'Brouillon';
+    case 'sent': return 'Envoyée';
+    case 'paid': return 'Payée';
+    case 'overdue': return 'En retard';
+    case 'cancelled': return 'Annulée';
+    default: return status;
+  }
+};
+
+const getInvoiceStatusChipColor = (status: string): "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" => {
+  switch (status) {
+    case 'paid': return "success";
+    case 'sent': return "primary";
+    case 'overdue': return "error";
+    case 'cancelled': return "error";
+    case 'draft':
+    default: return "default";
+  }
+};
+
+// Quote status utility functions
+const getQuoteStatusLabel = (status: string): string => {
+  switch (status) {
+    case 'draft': return 'Brouillon';
+    case 'sent': return 'Envoyé';
+    case 'accepted': return 'Accepté';
+    case 'rejected': return 'Rejeté';
+    case 'expired': return 'Expiré';
+    case 'cancelled': return 'Annulé';
+    default: return status;
+  }
+};
+
+const getQuoteStatusChipColor = (status: string): "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" => {
+  switch (status) {
+    case 'accepted': return "success";
+    case 'sent': return "primary";
+    case 'rejected': 
+    case 'expired':
+    case 'cancelled': return "error";
+    case 'draft':
+    default: return "default";
+  }
+};
+
   // QR Code scanner states
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
@@ -218,7 +313,7 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
     page: 0,
   });
 
-  // These functions are no longer needed with the simplified interface// Get allowed transitions based on current status
+  // These functions are no longer needed with the simplified interface  // Get allowed transitions based on current status
   const getAllowedTransitions = (status: string): SalesStatus[] => {
     // These transitions must match the backend validation rules
     // Note: 'fast_track' is not a real status but a UI option that triggers
@@ -227,7 +322,8 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
       case 'pending':
         return ['confirmed', 'cancelled', 'fast_track' as SalesStatus];
       case 'confirmed':
-        return ['payment_pending', 'cancelled', 'fast_track' as SalesStatus];
+        // Skip showing payment_pending since it's automatic - show next transitions
+        return ['partially_paid', 'paid', 'cancelled', 'fast_track' as SalesStatus];
       case 'payment_pending':
         return ['partially_paid', 'paid', 'cancelled', 'fast_track' as SalesStatus];
       case 'partially_paid':
@@ -359,16 +455,56 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
     return matchesSearch && matchesStatus;
   });
 
-  // Filter invoices based on search term and status filter
+  // Filter invoices based on search term, status filter, and date filter
   const filteredInvoices = invoices.filter((invoice: ExtendedInvoice) => {
     const matchesSearch = 
       invoice.reference.toLowerCase().includes(invoiceSearchTerm.toLowerCase()) ||
-      (invoice.client_name?.toLowerCase().includes(invoiceSearchTerm.toLowerCase()) || false);
+      (invoice.client_name?.toLowerCase().includes(invoiceSearchTerm.toLowerCase()) || false) ||
+      (invoice.sale_reference?.toLowerCase().includes(invoiceSearchTerm.toLowerCase()) || false);
     const matchesStatus = invoiceStatusFilter === '' || invoice.status === invoiceStatusFilter;
-    return matchesSearch && matchesStatus;
+    
+    // Date filtering
+    let matchesDate = true;
+    if (invoiceDateFilter) {
+      const invoiceDate = new Date(invoice.date);
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      
+      switch (invoiceDateFilter) {
+        case 'today':
+          matchesDate = invoiceDate >= startOfDay;
+          break;
+        case 'week': {
+          const weekAgo = new Date(startOfDay);
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          matchesDate = invoiceDate >= weekAgo;
+          break;
+        }
+        case 'month': {
+          const monthAgo = new Date(startOfDay);
+          monthAgo.setMonth(monthAgo.getMonth() - 1);
+          matchesDate = invoiceDate >= monthAgo;
+          break;
+        }
+        case 'quarter': {
+          const quarterAgo = new Date(startOfDay);
+          quarterAgo.setMonth(quarterAgo.getMonth() - 3);
+          matchesDate = invoiceDate >= quarterAgo;
+          break;
+        }
+        case 'year': {
+          const yearAgo = new Date(startOfDay);
+          yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+          matchesDate = invoiceDate >= yearAgo;
+          break;
+        }
+      }
+    }
+    
+    return matchesSearch && matchesStatus && matchesDate;
   });
 
-  // Filter quotes based on search term and status filter
+  // Filter quotes based on search term, status filter, and date filter
   const filteredQuotes = quotes.filter((quote: ApiQuote) => {
     const clientId = Number(quote.client);
     const client = clients.find(c => c.id === clientId);
@@ -376,7 +512,46 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
       quote.reference.toLowerCase().includes(quoteSearchTerm.toLowerCase()) ||
       (client?.name?.toLowerCase().includes(quoteSearchTerm.toLowerCase()) || false);
     const matchesStatus = quoteStatusFilter === '' || quote.status === quoteStatusFilter;
-    return matchesSearch && matchesStatus;
+    
+    // Date filtering
+    let matchesDate = true;
+    if (quoteDateFilter) {
+      const quoteDate = new Date(quote.date);
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      
+      switch (quoteDateFilter) {
+        case 'today':
+          matchesDate = quoteDate >= startOfDay;
+          break;
+        case 'week': {
+          const weekAgo = new Date(startOfDay);
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          matchesDate = quoteDate >= weekAgo;
+          break;
+        }
+        case 'month': {
+          const monthAgo = new Date(startOfDay);
+          monthAgo.setMonth(monthAgo.getMonth() - 1);
+          matchesDate = quoteDate >= monthAgo;
+          break;
+        }
+        case 'quarter': {
+          const quarterAgo = new Date(startOfDay);
+          quarterAgo.setMonth(quarterAgo.getMonth() - 3);
+          matchesDate = quoteDate >= quarterAgo;
+          break;
+        }
+        case 'year': {
+          const yearAgo = new Date(startOfDay);
+          yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+          matchesDate = quoteDate >= yearAgo;
+          break;
+        }
+      }
+    }
+    
+    return matchesSearch && matchesStatus && matchesDate;
   });
 
   // Update useEffect hooks to reset page in pagination models
@@ -466,7 +641,7 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
         client: selectedClient.id!,
         zone: selectedZone,
         date: new Date().toISOString().split('T')[0],
-        status: 'pending',  // Changed from 'draft' to 'pending' to match backend
+        status: 'pending',  // Initial status is pending, changes to payment_pending when confirmed
         subtotal,
         discount_amount: 0,
         tax_amount,
@@ -603,93 +778,109 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
         return;
       }
 
-      // Confirm deletion
-      if (!window.confirm(`Êtes-vous sûr de vouloir supprimer la vente ${sale.reference} ?`)) {
+      // First check if the sale can be deleted
+      const canDeleteResponse = await SalesAPI.canDelete(sale.id);
+      
+      if (!canDeleteResponse.can_delete) {
+        setError(`Suppression non autorisée: ${canDeleteResponse.reason}`);
         return;
       }
 
-      console.log('Deleting sale:', sale);
-      await SalesAPI.delete(sale.id);
-      console.log('Sale deleted');
+      // Store the sale to delete and confirmation info
+      setSaleToDelete(sale);
+      setDeleteConfirmationInfo({
+        willRestoreStock: canDeleteResponse.will_restore_stock || false,
+        willRefundAmount: canDeleteResponse.will_refund_amount || 0,
+        hasPayments: canDeleteResponse.has_payments || false
+      });
+      
+      // Show confirmation dialog
+      setShowDeleteDialog(true);
+    } catch (err: unknown) {
+      console.error('Error checking delete eligibility:', err);
+      
+      let errorMessage = 'Erreur lors de la vérification de suppression.';
+      
+      if (err && typeof err === 'object' && 'response' in err) {
+        const response = (err as { response?: { data?: { message?: string; error?: string } } }).response;
+        if (response?.data?.message) {
+          errorMessage = response.data.message;
+        } else if (response?.data?.error) {
+          errorMessage = response.data.error;
+        }
+      }
+      
+      setError(errorMessage);
+    }
+  };
+
+  // Handle confirmed deletion
+  const handleConfirmDelete = async () => {
+    if (!saleToDelete?.id) {
+      setError('Aucune vente sélectionnée pour suppression');
+      return;
+    }
+
+    try {
+      setError(null);
+      setLoading(true);
+
+      console.log('Deleting sale:', saleToDelete);
+      const deletionResult = await SalesAPI.delete(saleToDelete.id);
+      console.log('Sale deleted:', deletionResult);
+
+      // Show success message with details
+      if (deletionResult.deletion_summary) {
+        const summary = deletionResult.deletion_summary;
+        let successMessage = `Vente ${summary.sale_reference} supprimée avec succès.`;
+        
+        if (summary.stock_restored && summary.stock_restored.length > 0) {
+          successMessage += '\n\nStock restauré:';
+          summary.stock_restored.forEach((item: { product: string; quantity: number; zone: string }) => {
+            successMessage += `\n• ${item.product}: ${item.quantity} unités dans ${item.zone}`;
+          });
+        }
+        
+        if (summary.payment_refunded > 0) {
+          successMessage += `\n\nMontant remboursé: ${formatCurrency(summary.payment_refunded)}`;
+        }
+        
+        setSuccessMessage(successMessage);
+        setTimeout(() => setSuccessMessage(null), 8000); // Show for 8 seconds due to more content
+      }
 
       // Update the local state
-      setSales(sales.filter(s => s.id !== sale.id));
-    } catch (err) {
+      setSales(sales.filter(s => s.id !== saleToDelete.id));
+      
+      // Close dialog and reset state
+      setShowDeleteDialog(false);
+      setSaleToDelete(null);
+      setDeleteConfirmationInfo(null);
+    } catch (err: unknown) {
       console.error('Error deleting sale:', err);
-      setError('Erreur lors de la suppression de la vente. Veuillez réessayer plus tard.');
-    }
-  };    // Removed duplicate functions: getStatusChipColor and getStatusLabel are now defined at the top level
-
-  // Get status chip color for invoices
-  const getInvoiceStatusChipColor = (status: string) => {
-    switch (status) {
-      case 'paid':
-        return 'success';
-      case 'sent':
-        return 'info';
-      case 'overdue':
-        return 'error';
-      case 'draft':
-        return 'default';
-      case 'cancelled':
-        return 'error';
-      default:
-        return 'default';
+      
+      let errorMessage = 'Erreur lors de la suppression de la vente.';
+      
+      if (err && typeof err === 'object' && 'response' in err) {
+        const response = (err as { response?: { data?: { message?: string; error?: string } } }).response;
+        if (response?.data?.message) {
+          errorMessage = response.data.message;
+        } else if (response?.data?.error) {
+          errorMessage = response.data.error;
+        }
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Get status label for invoices
-  const getInvoiceStatusLabel = (status: string) => {
-    switch (status) {
-      case 'paid':
-        return 'Payée';
-      case 'sent':
-        return 'Envoyée';
-      case 'overdue':
-        return 'En retard';
-      case 'draft':
-        return 'Brouillon';
-      case 'cancelled':
-        return 'Annulée';
-      default:
-        return status;
-    }
-  };
-
-  // Get status chip color for quotes
-  const getQuoteStatusChipColor = (status: string) => {
-    switch (status) {
-      case 'accepted':
-        return 'success';
-      case 'sent':
-        return 'info';
-      case 'rejected':
-        return 'error';
-      case 'expired':
-        return 'warning';
-      case 'draft':
-        return 'default';
-      default:
-        return 'default';
-    }
-  };
-
-  // Get status label for quotes
-  const getQuoteStatusLabel = (status: string) => {
-    switch (status) {
-      case 'accepted':
-        return 'Accepté';
-      case 'sent':
-        return 'Envoyé';
-      case 'rejected':
-        return 'Rejeté';
-      case 'expired':
-        return 'Expiré';
-      case 'draft':
-        return 'Brouillon';
-      default:
-        return status;
-    }
+  // Handle cancel deletion
+  const handleCancelDelete = () => {
+    setShowDeleteDialog(false);
+    setSaleToDelete(null);
+    setDeleteConfirmationInfo(null);
   };
 
   // Add the formatCurrency function
@@ -701,27 +892,32 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
     }).format(amount);
   };
 
-  // Handle creating a new invoice - fix the mixed code
+  // Handle creating a new invoice - improved version
   const handleCreateInvoice = async () => {
     if (!selectedSale) {
-      setError('Veuillez sélectionner une vente');
+      setSnackbarState({
+        open: true,
+        message: 'Veuillez sélectionner une vente',
+        severity: 'error'
+      });
       return;
     }
 
     try {
       setError(null);
+      const client = clients.find(c => c.id === selectedSale.client);
       const newInvoice: ApiInvoice = {
-        reference: `FACT-${new Date().getFullYear()}-${String(invoices.length + 1).padStart(3, '0')}`,
+        reference: `FACT-${new Date().getFullYear()}-${String(invoices.length + 1).padStart(4, '0')}`,
         sale: selectedSale.id!,
-        date: new Date().toISOString().split('T')[0],
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Due in 30 days
+        date: newInvoiceData.date || new Date().toISOString().split('T')[0],
+        due_date: newInvoiceData.due_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         status: 'draft',
         amount: selectedSale.total_amount,
         paid_amount: 0,
         balance: selectedSale.total_amount,
-        notes: 'Nouvelle facture',
-        // These fields will be populated by the server, but we'll set them here for UI consistency
-        sale_reference: selectedSale.reference
+        notes: newInvoiceData.notes || `Facture pour la vente ${selectedSale.reference}`,
+        sale_reference: selectedSale.reference,
+        client_name: client?.name
       };
 
       // Call the real API
@@ -731,21 +927,49 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
       setInvoices([...invoices, createdInvoice]);
       setShowAddInvoiceModal(false);
       setSelectedSale(null);
+      setNewInvoiceData({});
+      
+      setSnackbarState({
+        open: true,
+        message: `Facture ${createdInvoice.reference} créée avec succès`,
+        severity: 'success'
+      });
     } catch (err) {
       console.error('Error creating invoice:', err);
-      setError('Erreur lors de la création de la facture. Veuillez réessayer.');
+      setSnackbarState({
+        open: true,
+        message: 'Erreur lors de la création de la facture. Veuillez réessayer.',
+        severity: 'error'
+      });
     }
   };
 
-  // Handle creating a new quote - clean up the duplicate code
+  // Handle creating a new quote - improved version
   const handleCreateQuote = async () => {
     if (!selectedClient) {
-      setError('Veuillez sélectionner un client');
+      setSnackbarState({
+        open: true,
+        message: 'Veuillez sélectionner un client',
+        severity: 'error'
+      });
       return;
     }
 
     if (selectedProducts.length === 0) {
-      setError('Veuillez ajouter au moins un produit');
+      setSnackbarState({
+        open: true,
+        message: 'Veuillez ajouter au moins un produit',
+        severity: 'error'
+      });
+      return;
+    }
+
+    if (!selectedZone) {
+      setSnackbarState({
+        open: true,
+        message: 'Veuillez sélectionner une zone',
+        severity: 'error'
+      });
       return;
     }
 
@@ -756,15 +980,15 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
       const total_amount = Number((subtotal + tax_amount).toFixed(2));
       
       const newQuote: ApiQuote = {
-        reference: `DEV-${new Date().getFullYear()}-${String(quotes.length + 1).padStart(3, '0')}`,
+        reference: `DEV-${new Date().getFullYear()}-${String(quotes.length + 1).padStart(4, '0')}`,
         client: selectedClient.id!,
-        date: new Date().toISOString().split('T')[0],
-        expiry_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Valid for 30 days
+        date: newQuoteData.date || new Date().toISOString().split('T')[0],
+        expiry_date: newQuoteData.expiry_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         status: 'draft',
         subtotal,
         tax_amount,
         total_amount,
-        notes: 'Nouveau devis',
+        notes: newQuoteData.notes || `Devis pour ${selectedClient.name}`,
         items: selectedProducts.map((item) => ({
           product: item.product.id!,
           quantity: item.quantity,
@@ -782,9 +1006,21 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
       setShowAddQuoteModal(false);
       setSelectedClient(null);
       setSelectedProducts([]);
+      setNewQuoteData({});
+      setSelectedZone(0);
+      
+      setSnackbarState({
+        open: true,
+        message: `Devis ${createdQuote.reference} créé avec succès`,
+        severity: 'success'
+      });
     } catch (err) {
       console.error('Error creating quote:', err);
-      setError('Erreur lors de la création du devis. Veuillez réessayer.');
+      setSnackbarState({
+        open: true,
+        message: 'Erreur lors de la création du devis. Veuillez réessayer.',
+        severity: 'error'
+      });
     }
   };
 
@@ -802,103 +1038,180 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
     }
   };
 
-  // Handle saving edited invoice - clean up the mixed code
+  // Handle saving edited invoice - improved version
   const handleSaveEditInvoice = async () => {
     try {
       if (!editingInvoice || !editingInvoice.id) return;
       
+      // Validate data
+      if (editingInvoice.paid_amount < 0) {
+        setSnackbarState({
+          open: true,
+          message: 'Le montant payé ne peut pas être négatif',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      if (editingInvoice.paid_amount > editingInvoice.amount) {
+        setSnackbarState({
+          open: true,
+          message: 'Le montant payé ne peut pas dépasser le montant total',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      // Update balance
+      const updatedInvoice = {
+        ...editingInvoice,
+        balance: editingInvoice.amount - editingInvoice.paid_amount
+      };
+      
       // Call the real API to update the invoice
-      const updatedInvoice = await InvoicesAPI.update(editingInvoice.id, editingInvoice);
+      const savedInvoice = await InvoicesAPI.update(editingInvoice.id, updatedInvoice);
       
       // Update the local state
-      setInvoices(invoices.map(i => i.id === editingInvoice.id ? updatedInvoice : i));
+      setInvoices(invoices.map(i => i.id === editingInvoice.id ? savedInvoice : i));
       setShowEditInvoiceModal(false);
       setEditingInvoice(null);
+      
+      setSnackbarState({
+        open: true,
+        message: `Facture ${savedInvoice.reference} mise à jour avec succès`,
+        severity: 'success'
+      });
     } catch (err) {
       console.error('Error updating invoice:', err);
-      setError('Erreur lors de la mise à jour de la facture. Veuillez réessayer.');
+      setSnackbarState({
+        open: true,
+        message: 'Erreur lors de la mise à jour de la facture. Veuillez réessayer.',
+        severity: 'error'
+      });
     }
   };
 
-  // Handle deleting an invoice - clean up the mixed code
+  // Handle deleting an invoice - improved version
   const handleDeleteInvoice = async (invoice: ExtendedInvoice) => {
-    try {
-      if (!invoice.id) return;
-      
-      // Confirm deletion
-      if (!window.confirm(`Êtes-vous sûr de vouloir supprimer la facture ${invoice.reference} ?`)) {
-        return;
+    if (!invoice.id) return;
+    
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer la facture ${invoice.reference} ?`)) {
+      try {
+        await InvoicesAPI.delete(invoice.id);
+        setInvoices(invoices.filter(i => i.id !== invoice.id));
+        
+        setSnackbarState({
+          open: true,
+          message: `Facture ${invoice.reference} supprimée avec succès`,
+          severity: 'success'
+        });
+      } catch (err) {
+        console.error('Error deleting invoice:', err);
+        setSnackbarState({
+          open: true,
+          message: 'Erreur lors de la suppression de la facture. Veuillez réessayer.',
+          severity: 'error'
+        });
       }
-
-      // Call the real API to delete the invoice
-      await InvoicesAPI.delete(invoice.id);
-      
-      // Update the local state
-      setInvoices(invoices.filter(i => i.id !== invoice.id));
-    } catch (err) {
-      console.error('Error deleting invoice:', err);
-      setError('Erreur lors de la suppression de la facture. Veuillez réessayer.');
     }
   };
 
-  // Handle deleting a quote - clean up the mixed code
+  // Handle deleting a quote
   const handleDeleteQuote = async (quote: ApiQuote) => {
-    try {
-      if (!quote.id) return;
-      
-      // Confirm deletion
-      if (!window.confirm(`Êtes-vous sûr de vouloir supprimer le devis ${quote.reference} ?`)) {
-        return;
+    if (!quote.id) return;
+    
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer le devis ${quote.reference} ?`)) {
+      try {
+        await QuotesAPI.delete(quote.id);
+        setQuotes(quotes.filter(q => q.id !== quote.id));
+        
+        setSnackbarState({
+          open: true,
+          message: `Devis ${quote.reference} supprimé avec succès`,
+          severity: 'success'
+        });
+      } catch (err) {
+        console.error('Error deleting quote:', err);
+        setSnackbarState({
+          open: true,
+          message: 'Erreur lors de la suppression du devis. Veuillez réessayer.',
+          severity: 'error'
+        });
       }
-
-      // Call the real API to delete the quote
-      await QuotesAPI.delete(quote.id);
-      
-      // Update the local state
-      setQuotes(quotes.filter(q => q.id !== quote.id));
-    } catch (err) {
-      console.error('Error deleting quote:', err);
-      setError('Erreur lors de la suppression du devis. Veuillez réessayer.');
     }
   };
 
-  // Add a function to convert quote to sale - clean up the mixed code
+  // Handle editing a quote
+  const handleEditQuote = async (quote: ApiQuote) => {
+    try {
+      setError(null);
+      // Get the latest quote data from the API
+      const quoteData = await QuotesAPI.get(quote.id!);
+      setEditingQuote(quoteData);
+      setShowEditQuoteModal(true);
+    } catch (err) {
+      console.error('Error fetching quote details:', err);
+      setSnackbarState({
+        open: true,
+        message: 'Erreur lors de la récupération des détails du devis.',
+        severity: 'error'
+      });
+    }
+  };
+
+  // Add a function to convert quote to sale
   const handleConvertQuoteToSale = async (quote: ApiQuote) => {
     try {
       if (!quote.id) return;
       
-      // Confirm conversion
-      if (!window.confirm(`Êtes-vous sûr de vouloir convertir le devis ${quote.reference} en vente ?`)) {
-        return;
-      }
-      
-      // Need to select a zone
+      // Set the quote for conversion and show modal for zone selection
       setSelectedQuoteForConversion(quote);
       setShowQuoteConversionModal(true);
     } catch (err) {
       console.error('Error preparing quote conversion:', err);
-      setError('Erreur lors de la préparation de la conversion du devis. Veuillez réessayer.');
+      setSnackbarState({
+        open: true,
+        message: 'Erreur lors de la préparation de la conversion du devis.',
+        severity: 'error'
+      });
     }
   };
 
-  // Perform the actual conversion - clean up the mixed code
+  // Perform the actual conversion
   const confirmQuoteConversion = async () => {
     try {
       if (!selectedQuoteForConversion || !selectedQuoteForConversion.id) return;
-        // Call the API to convert the quote to a sale
-      const createdSale = await QuotesAPI.convertToSale(selectedQuoteForConversion.id);
+      if (!selectedZone) {
+        setSnackbarState({
+          open: true,
+          message: 'Veuillez sélectionner une zone',
+          severity: 'error'
+        });
+        return;
+      }
+      
+      // Call the API to convert the quote to a sale with the selected zone
+      const createdSale = await QuotesAPI.convertToSale(selectedQuoteForConversion.id, selectedZone);
       
       // Refresh the data
       await Promise.all([fetchData(), fetchQuotes()]);
       setShowQuoteConversionModal(false);
       setSelectedQuoteForConversion(null);
-      setSelectedZone(1);
+      setSelectedZone(0);
       
       // Show success message
-      setSuccessMessage(`Le devis ${selectedQuoteForConversion.reference} a été converti en vente avec succès. Référence de la vente: ${createdSale.reference}`);
-      setTimeout(() => setSuccessMessage(null), 5000);
+      setSnackbarState({
+        open: true,
+        message: `Devis ${selectedQuoteForConversion.reference} converti en vente avec succès. Référence: ${createdSale.reference}`,
+        severity: 'success'
+      });
     } catch (err) {
-      console.error('Error converting quote to sale:', err);    setError('Erreur lors de la conversion du devis en vente. Veuillez réessayer.');
+      console.error('Error converting quote to sale:', err);
+      setSnackbarState({
+        open: true,
+        message: 'Erreur lors de la conversion du devis en vente. Veuillez réessayer.',
+        severity: 'error'
+      });
     }
   };
 
@@ -948,10 +1261,125 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
     },
     { 
       field: 'total_amount', 
-      headerName: 'Montant', 
-      flex: 1,      valueGetter: (value, row) => {
+      headerName: 'Montant Total', 
+      flex: 1,
+      valueGetter: (value, row) => {
         if (!row || row.total_amount === undefined) return '';
         return formatCurrency(row.total_amount);
+      },
+      renderCell: (params: GridRenderCellParams) => {
+        if (!params.row) return <></>;
+        
+        return (
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <Typography 
+              variant="body2" 
+              fontWeight="bold"
+              color="primary.main"
+            >
+              {formatCurrency(params.row.total_amount)}
+            </Typography>
+          </Box>
+        );
+      }
+    },
+    { 
+      field: 'paid_amount', 
+      headerName: 'Montant Payé', 
+      flex: 1,
+      valueGetter: (value, row) => {
+        if (!row || row.paid_amount === undefined) return '';
+        return formatCurrency(row.paid_amount || 0);
+      },
+      renderCell: (params: GridRenderCellParams) => {
+        if (!params.row) return <></>;
+        const paidAmount = params.row.paid_amount || 0;
+        const totalAmount = params.row.total_amount || 0;
+        const percentage = totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0;
+        
+        return (
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'flex-start', 
+            justifyContent: 'center',
+            width: '100%',
+            height: '100%'
+          }}>
+            <Typography 
+              variant="body2" 
+              fontWeight="medium"
+              color="success.main"
+              sx={{ mb: 0.5 }}
+            >
+              {formatCurrency(paidAmount)}
+            </Typography>
+            <LinearProgress 
+              variant="determinate" 
+              value={percentage} 
+              sx={{ 
+                width: '100%', 
+                height: 4, 
+                borderRadius: 2,
+                backgroundColor: 'grey.200',
+                '& .MuiLinearProgress-bar': {
+                  borderRadius: 2,
+                  backgroundColor: percentage === 100 ? 'success.main' : 
+                                   percentage > 0 ? 'warning.main' : 'error.main'
+                }
+              }} 
+            />
+            <Typography variant="caption" color="text.secondary">
+              {percentage.toFixed(0)}%
+            </Typography>
+          </Box>
+        );
+      }
+    },
+    {
+      field: 'remaining_amount',
+      headerName: 'Reste à Payer',
+      flex: 1,
+      valueGetter: (value, row) => {
+        if (!row) return '';
+        const remaining = row.remaining_amount !== undefined ? 
+          row.remaining_amount : 
+          (row.total_amount || 0) - (row.paid_amount || 0);
+        return formatCurrency(remaining);
+      },
+      renderCell: (params: GridRenderCellParams) => {
+        if (!params.row) return <></>;
+        const remaining = params.row.remaining_amount !== undefined ? 
+          params.row.remaining_amount : 
+          (params.row.total_amount || 0) - (params.row.paid_amount || 0);
+        
+        const isOverdue = remaining > 0 && new Date(params.row.date) < new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        
+        return (
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            height: '100%' 
+          }}>
+            <Typography 
+              variant="body2" 
+              fontWeight="medium"
+              color={remaining > 0 ? (isOverdue ? "error.main" : "warning.main") : "success.main"}
+              sx={{ mr: 1 }}
+            >
+              {formatCurrency(remaining)}
+            </Typography>
+            {isOverdue && remaining > 0 && (
+              <Tooltip title="Paiement en retard">
+                <Warning color="error" fontSize="small" />
+              </Tooltip>
+            )}
+          </Box>
+        );
       }
     },
     { 
@@ -961,13 +1389,42 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
       renderCell: (params: GridRenderCellParams) => {
         // Add safety check for undefined row
         if (!params.row || !params.row.status) return <></>;
+        
+        const isDeletable = params.row.status === 'pending' || params.row.status === 'cancelled';
+        
         return (
-          <Chip 
-            label={getStatusLabel(params.row.status)} 
-            color={getStatusChipColor(params.row.status)}
-            size="small"
-            variant="outlined"
-          />
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            height: '100%',
+            gap: 1
+          }}>
+            <Chip 
+              label={getStatusLabel(params.row.status)} 
+              color={getStatusChipColor(params.row.status)}
+              size="small"
+              variant="outlined"
+            />
+            {isDeletable && (
+              <Tooltip title="Cette vente peut être supprimée en toute sécurité">
+                <Box 
+                  sx={{ 
+                    width: 8, 
+                    height: 8, 
+                    borderRadius: '50%', 
+                    backgroundColor: 'warning.main',
+                    ml: 0.5,
+                    '@keyframes pulse': {
+                      '0%': { opacity: 1 },
+                      '50%': { opacity: 0.5 },
+                      '100%': { opacity: 1 }
+                    },
+                    animation: 'pulse 2s infinite'
+                  }} 
+                />
+              </Tooltip>
+            )}
+          </Box>
         );
       }
     },
@@ -1004,7 +1461,8 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
           />
         );
       }
-    },    {
+    },
+    {
       field: 'actions',
       headerName: 'Actions',
       flex: 1,
@@ -1012,32 +1470,43 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
         // Add safety check for undefined row
         if (!params.row) return <></>;
         
+        const canDelete = params.row.status === 'pending' || params.row.status === 'cancelled';
+        
           return (
           <Box>
             <Tooltip title="Éditer">
               <IconButton 
                 size="small" 
                 color="primary" 
-                onClick={() => handleEditSale(params.row)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEditSale(params.row);
+                }}
                 disabled={!canEditSale}
               >
                 <EditIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title="Supprimer">
-              <IconButton 
-                size="small" 
-                color="error"
-                onClick={() => handleDeleteSale(params.row)}
-                disabled={!canDeleteSale}
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
+            {canDelete && (
+              <Tooltip title="Supprimer">
+                <IconButton 
+                  size="small" 
+                  color="error"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteSale(params.row);
+                  }}
+                  disabled={!canDeleteSale}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
             <Tooltip title="Voir détails">
               <IconButton 
                 size="small" 
                 color="info"
+                onClick={(e) => e.stopPropagation()}
               >
                 <VisibilityIcon fontSize="small" />
               </IconButton>
@@ -1127,23 +1596,37 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
         if (!params.row) return <></>;
         return (
           <Stack direction="row" spacing={1} justifyContent="flex-end">
-            <IconButton color="info" size="small">
+            <IconButton 
+              color="info" 
+              size="small"
+              onClick={(e) => e.stopPropagation()}
+            >
               <VisibilityIcon fontSize="small" />
             </IconButton>
             <IconButton 
               color="primary" 
               size="small"
-              onClick={() => handleEditInvoice(params.row)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEditInvoice(params.row);
+              }}
             >
               <EditIcon fontSize="small" />
             </IconButton>
-            <IconButton color="secondary" size="small">
+            <IconButton 
+              color="secondary" 
+              size="small"
+              onClick={(e) => e.stopPropagation()}
+            >
               <PrintIcon fontSize="small" />
             </IconButton>
             <IconButton 
               color="error" 
               size="small"
-              onClick={() => handleDeleteInvoice(params.row)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteInvoice(params.row);
+              }}
             >
               <DeleteIcon fontSize="small" />
             </IconButton>
@@ -1216,30 +1699,47 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
         if (!params.row) return <></>;
         return (
           <Stack direction="row" spacing={1} justifyContent="flex-end">
-            <IconButton color="info" size="small">
+            <IconButton 
+              color="info" 
+              size="small"
+              onClick={(e) => e.stopPropagation()}
+            >
               <VisibilityIcon fontSize="small" />
             </IconButton>
             <IconButton 
               color="primary" 
               size="small"
-              onClick={() => handleEditQuote(params.row)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEditQuote(params.row);
+              }}
             >
               <EditIcon fontSize="small" />
             </IconButton>
-            <IconButton color="secondary" size="small">
+            <IconButton 
+              color="secondary" 
+              size="small"
+              onClick={(e) => e.stopPropagation()}
+            >
               <PrintIcon fontSize="small" />
             </IconButton>
             <IconButton 
               color="error" 
               size="small"
-              onClick={() => handleDeleteQuote(params.row)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteQuote(params.row);
+              }}
             >
               <DeleteIcon fontSize="small" />
             </IconButton>
             <IconButton 
               color="success" 
               size="small"
-              onClick={() => handleConvertQuoteToSale(params.row)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleConvertQuoteToSale(params.row);
+              }}
               disabled={!params.row.status || (params.row.status !== 'draft' && params.row.status !== 'sent')}
             >
               <PaymentsIcon fontSize="small" />
@@ -1249,18 +1749,6 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
       }
     },
   ];
-  // Handle editing a quote
-  const handleEditQuote = async (quote: ApiQuote) => {
-    try {
-      // Get the latest quote data from the API
-      const quoteData = await QuotesAPI.get(quote.id!);
-      setEditingQuote(quoteData);
-      setShowEditQuoteModal(true);
-    } catch (err) {
-      console.error('Error fetching quote details:', err);
-      setError('Erreur lors de la récupération des détails du devis. Veuillez réessayer plus tard.');
-    }
-  };
 
   // QR Code scanner functions
   // Start camera for QR code scanning
@@ -1502,36 +1990,120 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
               Gérez vos ventes, factures et devis
             </Typography>
           </Box>
-          {/* Quick stats section */}
-          <Box 
-            sx={{ 
-              display: 'flex', 
-              gap: 2, 
-              mt: { xs: 2, sm: 0 },
-              backgroundColor: 'background.paper',
-              p: 1,
-              borderRadius: 1,
-              border: '1px solid',
-              borderColor: 'divider'
-            }}
-          >
-            <Box sx={{ textAlign: 'center', px: 2 }}>
-              <Typography variant="caption" color="text.secondary">Ventes</Typography>
-              <Typography variant="h6">{sales.length}</Typography>
+          {/* Enhanced quick stats section with payment information */}
+          {tabValue === 0 && (
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                gap: 1, 
+                mt: { xs: 2, sm: 0 },
+                backgroundColor: 'background.paper',
+                p: 1.5,
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+              }}
+            >
+              <Box sx={{ textAlign: 'center', px: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>Total Ventes</Typography>
+                <Typography variant="h6" color="primary.main">{sales.length}</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', px: 2, borderLeft: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>En attente</Typography>
+                <Typography variant="h6" color="warning.main">{sales.filter(s => s.status === 'pending').length}</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', px: 2, borderLeft: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>Non payé</Typography>
+                <Typography variant="h6" color="error.main">{sales.filter(s => s.payment_status === 'unpaid').length}</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', px: 2, borderLeft: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>Partiellement payé</Typography>
+                <Typography variant="h6" color="warning.main">{sales.filter(s => s.payment_status === 'partially_paid').length}</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', px: 2, borderLeft: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>Payé</Typography>
+                <Typography variant="h6" color="success.main">{sales.filter(s => s.payment_status === 'paid').length}</Typography>
+              </Box>
             </Box>
-            <Box sx={{ textAlign: 'center', px: 2, borderLeft: '1px solid', borderRight: '1px solid', borderColor: 'divider' }}>
-              <Typography variant="caption" color="text.secondary">En attente</Typography>
-              <Typography variant="h6">{sales.filter(s => s.status === 'pending').length}</Typography>
+          )}
+
+          {/* Invoice Statistics */}
+          {tabValue === 1 && (
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                gap: 1, 
+                mt: { xs: 2, sm: 0 },
+                backgroundColor: 'background.paper',
+                p: 1.5,
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+              }}
+            >
+              <Box sx={{ textAlign: 'center', px: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>Total Factures</Typography>
+                <Typography variant="h6" color="primary.main">{filteredInvoices.length}</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', px: 2, borderLeft: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>Payées</Typography>
+                <Typography variant="h6" color="success.main">{filteredInvoices.filter(inv => inv.status === 'paid').length}</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', px: 2, borderLeft: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>En retard</Typography>
+                <Typography variant="h6" color="warning.main">{filteredInvoices.filter(inv => inv.status === 'overdue').length}</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', px: 2, borderLeft: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>Montant Total</Typography>
+                <Typography variant="h6" color="info.main">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0))}</Typography>
+              </Box>
             </Box>
-            <Box sx={{ textAlign: 'center', px: 2 }}>
-              <Typography variant="caption" color="text.secondary">Non payé</Typography>
-              <Typography variant="h6">{sales.filter(s => s.payment_status === 'unpaid').length}</Typography>
+          )}
+
+          {/* Quote Statistics */}
+          {tabValue === 2 && (
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                gap: 1, 
+                mt: { xs: 2, sm: 0 },
+                backgroundColor: 'background.paper',
+                p: 1.5,
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+              }}
+            >
+              <Box sx={{ textAlign: 'center', px: 2 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>Total Devis</Typography>
+                <Typography variant="h6" color="primary.main">{filteredQuotes.length}</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', px: 2, borderLeft: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>Acceptés</Typography>
+                <Typography variant="h6" color="success.main">{filteredQuotes.filter(quote => quote.status === 'accepted').length}</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', px: 2, borderLeft: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>Expirés</Typography>
+                <Typography variant="h6" color="warning.main">{filteredQuotes.filter(quote => {
+                  const expiryDate = new Date(quote.expiry_date);
+                  const today = new Date();
+                  return expiryDate < today && quote.status !== 'accepted' && quote.status !== 'rejected';
+                }).length}</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', px: 2, borderLeft: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold' }}>Valeur Totale</Typography>
+                <Typography variant="h6" color="info.main">{formatCurrency(filteredQuotes.reduce((sum, quote) => sum + (quote.total_amount || 0), 0))}</Typography>
+              </Box>
             </Box>
-          </Box>
+          )}
         </Box>
 
         {/* Main content with tabs */}
-        <Paper sx={{ mb: 4, borderRadius: 2, overflow: 'hidden' }}>          <Tabs
+        <Paper sx={{ mb: 4, borderRadius: 2, overflow: 'hidden' }}>
+          <Tabs
             value={tabValue}
             onChange={handleTabChange}
             indicatorColor="primary"
@@ -1686,12 +2258,19 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
               }}>
                 <TextField
                   label="Rechercher"
-                  placeholder="Référence ou client"
+                  placeholder="Référence, client ou vente"
                   variant="outlined"
                   size="small"
                   fullWidth
                   value={invoiceSearchTerm}
                   onChange={(e) => setInvoiceSearchTerm(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <VisibilityIcon color="action" />
+                      </InputAdornment>
+                    )
+                  }}
                 />
                 <FormControl variant="outlined" size="small" sx={{ minWidth: 200 }}>
                   <InputLabel id="invoice-status-filter-label">Statut</InputLabel>
@@ -1703,11 +2282,51 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                     label="Statut"
                   >
                     <MenuItem value="">Tous les statuts</MenuItem>
-                    <MenuItem value="paid">Payée</MenuItem>
-                    <MenuItem value="sent">Envoyée</MenuItem>
-                    <MenuItem value="overdue">En retard</MenuItem>
-                    <MenuItem value="draft">Brouillon</MenuItem>
-                    <MenuItem value="cancelled">Annulée</MenuItem>
+                    <MenuItem value="draft">
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Chip label="Brouillon" color="default" size="small" sx={{ mr: 1 }} />
+                        Brouillon
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="sent">
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Chip label="Envoyée" color="info" size="small" sx={{ mr: 1 }} />
+                        Envoyée
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="paid">
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Chip label="Payée" color="success" size="small" sx={{ mr: 1 }} />
+                        Payée
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="overdue">
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Chip label="En retard" color="error" size="small" sx={{ mr: 1 }} />
+                        En retard
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="cancelled">
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Chip label="Annulée" color="error" size="small" sx={{ mr: 1 }} />
+                        Annulée
+                      </Box>
+                    </MenuItem>
+                  </Select>
+                </FormControl>
+                <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
+                  <InputLabel>Période</InputLabel>
+                  <Select
+                    value={invoiceDateFilter}
+                    onChange={(e) => setInvoiceDateFilter(e.target.value)}
+                    label="Période"
+                  >
+                    <MenuItem value="">Toutes les périodes</MenuItem>
+                    <MenuItem value="today">Aujourd'hui</MenuItem>
+                    <MenuItem value="week">Cette semaine</MenuItem>
+                    <MenuItem value="month">Ce mois</MenuItem>
+                    <MenuItem value="quarter">Ce trimestre</MenuItem>
+                    <MenuItem value="year">Cette année</MenuItem>
                   </Select>
                 </FormControl>
               </Box>
@@ -1716,10 +2335,17 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                 color="primary"
                 startIcon={<AddIcon />}
                 onClick={() => setShowAddInvoiceModal(true)}
+                sx={{ 
+                  borderRadius: 2, 
+                  px: 3,
+                  boxShadow: 2,
+                  '&:hover': { boxShadow: 4 }
+                }}
               >
                 Nouvelle facture
               </Button>
             </Box>
+
             {invoiceLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                 <CircularProgress />
@@ -1731,17 +2357,34 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                     {error}
                   </Alert>
                 )}
-                <Box sx={{ height: 400, width: '100%' }}>
+                <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>
                   <DataGrid
                     rows={filteredInvoices}
                     columns={invoiceColumns}
                     pagination
                     paginationModel={invoicePaginationModel}
                     onPaginationModelChange={setInvoicePaginationModel}
-                    pageSizeOptions={[5, 10, 25]}
+                    pageSizeOptions={[10, 25, 50]}
                     checkboxSelection={false}
                     disableRowSelectionOnClick
                     loading={invoiceLoading}
+                    sx={{
+                      border: 'none',
+                      '& .MuiDataGrid-columnHeaders': {
+                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
+                        color: theme => theme.palette.text.primary,
+                        fontWeight: 'bold'
+                      },
+                      '& .MuiDataGrid-cell': {
+                        borderBottom: '1px solid',
+                        borderColor: 'divider',
+                        fontSize: '0.875rem'
+                      },
+                      '& .MuiDataGrid-row:hover': {
+                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
+                        cursor: 'pointer'
+                      }
+                    }}
                     getRowId={(row) => {
                       // Safely handle undefined or null rows
                       if (!row || row.id === undefined) return Math.random();
@@ -1771,12 +2414,19 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
               }}>
                 <TextField
                   label="Rechercher"
-                  placeholder="Référence ou client"
+                  placeholder="Référence, client ou devis"
                   variant="outlined"
                   size="small"
                   fullWidth
                   value={quoteSearchTerm}
                   onChange={(e) => setQuoteSearchTerm(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <VisibilityIcon color="action" />
+                      </InputAdornment>
+                    )
+                  }}
                 />
                 <FormControl variant="outlined" size="small" sx={{ minWidth: 200 }}>
                   <InputLabel id="quote-status-filter-label">Statut</InputLabel>
@@ -1788,11 +2438,51 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                     label="Statut"
                   >
                     <MenuItem value="">Tous les statuts</MenuItem>
-                    <MenuItem value="accepted">Accepté</MenuItem>
-                    <MenuItem value="sent">Envoyé</MenuItem>
-                    <MenuItem value="rejected">Rejeté</MenuItem>
-                    <MenuItem value="expired">Expiré</MenuItem>
-                    <MenuItem value="draft">Brouillon</MenuItem>
+                    <MenuItem value="draft">
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Chip label="Brouillon" color="default" size="small" sx={{ mr: 1 }} />
+                        Brouillon
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="sent">
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Chip label="Envoyé" color="info" size="small" sx={{ mr: 1 }} />
+                        Envoyé
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="accepted">
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Chip label="Accepté" color="success" size="small" sx={{ mr: 1 }} />
+                        Accepté
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="rejected">
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Chip label="Rejeté" color="error" size="small" sx={{ mr: 1 }} />
+                        Rejeté
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="expired">
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Chip label="Expiré" color="warning" size="small" sx={{ mr: 1 }} />
+                        Expiré
+                      </Box>
+                    </MenuItem>
+                  </Select>
+                </FormControl>
+                <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
+                  <InputLabel>Période</InputLabel>
+                  <Select
+                    value={quoteDateFilter}
+                    onChange={(e) => setQuoteDateFilter(e.target.value)}
+                    label="Période"
+                  >
+                    <MenuItem value="">Toutes les périodes</MenuItem>
+                    <MenuItem value="today">Aujourd'hui</MenuItem>
+                    <MenuItem value="week">Cette semaine</MenuItem>
+                    <MenuItem value="month">Ce mois</MenuItem>
+                    <MenuItem value="quarter">Ce trimestre</MenuItem>
+                    <MenuItem value="year">Cette année</MenuItem>
                   </Select>
                 </FormControl>
               </Box>
@@ -1801,10 +2491,17 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                 color="primary"
                 startIcon={<AddIcon />}
                 onClick={() => setShowAddQuoteModal(true)}
+                sx={{ 
+                  borderRadius: 2, 
+                  px: 3,
+                  boxShadow: 2,
+                  '&:hover': { boxShadow: 4 }
+                }}
               >
                 Nouveau devis
               </Button>
             </Box>
+
             {quoteLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                 <CircularProgress />
@@ -1816,17 +2513,34 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                     {error}
                   </Alert>
                 )}
-                <Box sx={{ height: 400, width: '100%' }}>
+                <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>
                   <DataGrid
                     rows={filteredQuotes}
                     columns={quoteColumns}
                     pagination
                     paginationModel={quotePaginationModel}
                     onPaginationModelChange={setQuotePaginationModel}
-                    pageSizeOptions={[5, 10, 25]}
+                    pageSizeOptions={[10, 25, 50]}
                     checkboxSelection={false}
                     disableRowSelectionOnClick
                     loading={quoteLoading}
+                    sx={{
+                      border: 'none',
+                      '& .MuiDataGrid-columnHeaders': {
+                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
+                        color: theme => theme.palette.text.primary,
+                        fontWeight: 'bold'
+                      },
+                      '& .MuiDataGrid-cell': {
+                        borderBottom: '1px solid',
+                        borderColor: 'divider',
+                        fontSize: '0.875rem'
+                      },
+                      '& .MuiDataGrid-row:hover': {
+                        backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
+                        cursor: 'pointer'
+                      }
+                    }}
                     getRowId={(row) => {
                       // Safely handle undefined or null rows
                       if (!row || row.id === undefined) return Math.random();
@@ -1910,10 +2624,14 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                   />
                   <TextField
                     label="Quantité"
-                    type="number"
-                    value={currentQuantity}
-                    onChange={(e) => setCurrentQuantity(Number(e.target.value))}
-                    InputProps={{ inputProps: { min: 1 } }}
+                    type="text"
+                    value={formatNumberDisplay(currentQuantity)}
+                    onChange={(e) => {
+                      const newValue = validateIntegerInput(e.target.value, currentQuantity);
+                      setCurrentQuantity(newValue);
+                    }}
+                    error={currentQuantity < 1 && currentQuantity !== 0}
+                    helperText={getValidationError(currentQuantity, 'quantity')}
                     sx={{ width: 100 }} // Fixed width for quantity
                   />
                   <Button
@@ -2008,8 +2726,9 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
           </DialogActions>
         </Dialog>        {/* Edit Sale Dialog - Simplified and user-friendly */}
         <Dialog open={showEditModal} onClose={() => setShowEditModal(false)} maxWidth="md" fullWidth>
-          <DialogTitle sx={{ pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <DialogTitle sx={{ pb: 1, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center' }}>
+            <ShoppingCart sx={{ mr: 1, color: 'primary.main' }} />
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
               <Typography variant="h5">Modifier la vente {editingSale?.reference}</Typography>
               <Chip 
                 label={getStatusLabel(editingSale?.status || 'pending')} 
@@ -2021,7 +2740,7 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
           <DialogContent>
             {editingSale && (
               <Grid container spacing={3} sx={{ mt: 1 }}>
-                {/* Sale information summary card - Simplified */}
+                {/* Sale information summary card - Enhanced with payment information */}
                 <Grid item xs={12}>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 3 }}>
                     <Paper sx={{ 
@@ -2031,7 +2750,9 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      bgcolor: 'background.default' 
+                      bgcolor: 'background.default',
+                      border: '1px solid',
+                      borderColor: 'divider'
                     }}>
                       <Typography variant="subtitle2" color="text.secondary">Client</Typography>
                       <Typography variant="body1" fontWeight="bold" align="center">
@@ -2046,7 +2767,9 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      bgcolor: 'background.default'
+                      bgcolor: 'background.default',
+                      border: '1px solid',
+                      borderColor: 'divider'
                     }}>
                       <Typography variant="subtitle2" color="text.secondary">Date</Typography>
                       <Typography variant="body1" fontWeight="bold">
@@ -2061,14 +2784,196 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      bgcolor: 'background.default'
+                      bgcolor: 'background.default',
+                      border: '1px solid',
+                      borderColor: 'divider'
                     }}>
-                      <Typography variant="subtitle2" color="text.secondary">Montant</Typography>
+                      <Typography variant="subtitle2" color="text.secondary">Montant total</Typography>
                       <Typography variant="body1" fontWeight="bold" color="primary.main">
                         {formatCurrency(editingSale.total_amount)}
                       </Typography>
                     </Paper>
                   </Box>
+                  
+                  {/* Enhanced Payment Information Card */}
+                  <PaymentInfoCard 
+                    elevation={3}
+                    sx={{ 
+                      p: 3, 
+                      mb: 3, 
+                      border: '2px solid',
+                      borderColor: (editingSale.payment_status === 'partially_paid') ? 
+                        'warning.main' : 
+                        (editingSale.payment_status === 'paid' ? 'success.main' : 'error.main'),
+                      bgcolor: (editingSale.payment_status === 'partially_paid') ? 
+                        'warning.50' : 
+                        (editingSale.payment_status === 'paid' ? 'success.50' : 'error.50')
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                      <PaymentsIcon sx={{ mr: 1, color: 'primary.main' }} />
+                      <Typography variant="h6" color="primary.main" sx={{ fontWeight: 'bold' }}>
+                        Statut des Paiements
+                      </Typography>
+                      <Chip
+                        label={
+                          editingSale.payment_status === 'paid' ? 'Payé' :
+                          editingSale.payment_status === 'partially_paid' ? 'Partiellement payé' :
+                          'Non payé'
+                        }
+                        color={
+                          editingSale.payment_status === 'paid' ? 'success' :
+                          editingSale.payment_status === 'partially_paid' ? 'warning' :
+                          'error'
+                        }
+                        sx={{ ml: 'auto', fontWeight: 'bold' }}
+                      />
+                    </Box>
+                    
+                    <Grid container spacing={3}>
+                      <Grid item xs={12} sm={4}>
+                        <Paper 
+                          elevation={1} 
+                          sx={{ 
+                            p: 2, 
+                            textAlign: 'center',
+                            borderRadius: 2,
+                            bgcolor: 'background.paper',
+                            border: '1px solid',
+                            borderColor: 'primary.light'
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 'bold' }}>
+                            Montant Total
+                          </Typography>
+                          <Typography 
+                            variant="h5" 
+                            sx={{ 
+                              fontWeight: 'bold',
+                              color: 'primary.main',
+                              mt: 1
+                            }}
+                          >
+                            {formatCurrency(editingSale.total_amount)}
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                      
+                      <Grid item xs={12} sm={4}>
+                        <Paper 
+                          elevation={1} 
+                          sx={{ 
+                            p: 2, 
+                            textAlign: 'center',
+                            borderRadius: 2,
+                            bgcolor: 'background.paper',
+                            border: '1px solid',
+                            borderColor: 'success.light'
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 'bold' }}>
+                            Montant Payé
+                          </Typography>
+                          <Typography 
+                            variant="h5" 
+                            sx={{ 
+                              fontWeight: 'bold',
+                              color: 'success.main',
+                              mt: 1
+                            }}
+                          >
+                            {formatCurrency(editingSale.paid_amount || 0)}
+                          </Typography>
+                          
+                          {/* Payment Progress Bar */}
+                          <Box sx={{ mt: 2 }}>
+                            <LinearProgress 
+                              variant="determinate" 
+                              value={editingSale.total_amount > 0 ? ((editingSale.paid_amount || 0) / editingSale.total_amount) * 100 : 0}
+                              sx={{ 
+                                height: 8, 
+                                borderRadius: 4,
+                                backgroundColor: 'grey.200',
+                                '& .MuiLinearProgress-bar': {
+                                  borderRadius: 4,
+                                  backgroundColor: 
+                                    editingSale.payment_status === 'paid' ? 'success.main' :
+                                    editingSale.payment_status === 'partially_paid' ? 'warning.main' : 'error.main'
+                                }
+                              }} 
+                            />
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                              {editingSale.total_amount > 0 ? (((editingSale.paid_amount || 0) / editingSale.total_amount) * 100).toFixed(1) : 0}% payé
+                            </Typography>
+                          </Box>
+                        </Paper>
+                      </Grid>
+                      
+                      <Grid item xs={12} sm={4}>
+                        <Paper 
+                          elevation={1} 
+                          sx={{ 
+                            p: 2, 
+                            textAlign: 'center',
+                            borderRadius: 2,
+                            bgcolor: 'background.paper',
+                            border: '1px solid',
+                            borderColor: 
+                              (editingSale.remaining_amount || editingSale.total_amount - (editingSale.paid_amount || 0)) > 0 
+                                ? 'error.light' 
+                                : 'success.light'
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', fontWeight: 'bold' }}>
+                            Solde Restant
+                          </Typography>
+                          <Typography 
+                            variant="h5" 
+                            sx={{ 
+                              fontWeight: 'bold',
+                              color: 
+                                (editingSale.remaining_amount || editingSale.total_amount - (editingSale.paid_amount || 0)) > 0 
+                                  ? 'error.main' 
+                                  : 'success.main',
+                              mt: 1
+                            }}
+                          >
+                            {formatCurrency(
+                              editingSale.remaining_amount || 
+                              editingSale.total_amount - (editingSale.paid_amount || 0)
+                            )}
+                          </Typography>
+                          
+                          {/* Overdue Warning */}
+                          {(editingSale.remaining_amount || editingSale.total_amount - (editingSale.paid_amount || 0)) > 0 && 
+                           new Date(editingSale.date) < new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) && (
+                            <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <Warning color="error" fontSize="small" sx={{ mr: 0.5 }} />
+                              <Typography variant="caption" color="error.main" sx={{ fontWeight: 'bold' }}>
+                                En retard
+                              </Typography>
+                            </Box>
+                          )}
+                        </Paper>
+                      </Grid>
+                    </Grid>
+                    
+                    
+                    {editingSale.payment_status === 'paid' && (
+                      <Alert 
+                        severity="success" 
+                        sx={{ mt: 2 }}
+                        icon={<CheckCircle />}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                          Paiement complet
+                        </Typography>
+                        <Typography variant="body2">
+                          Cette vente a été entièrement payée.
+                        </Typography>
+                      </Alert>
+                    )}
+                  </PaymentInfoCard>
                 </Grid>
                 
                 {/* Simplified status management with clear actions */}
@@ -2172,10 +3077,18 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                             color={buttonProps.color}
                             startIcon={buttonProps.icon}
                             onClick={() => {
-                              setEditingSale({
-                                ...editingSale,
-                                status: transition as string
-                              });
+                              // Special handling for confirmed status - automatically go to payment_pending
+                              if (transition === 'confirmed') {
+                                setEditingSale({
+                                  ...editingSale,
+                                  status: 'payment_pending'
+                                });
+                              } else {
+                                setEditingSale({
+                                  ...editingSale,
+                                  status: transition as string
+                                });
+                              }
                             }}
                           >
                             {buttonProps.label}
@@ -2273,14 +3186,22 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
           </DialogActions>
         </Dialog>
 
-        {/* Add Invoice Dialog - Fixed opening/closing tags */}
+        {/* Add Invoice Dialog */}
         <Dialog open={showAddInvoiceModal} onClose={() => setShowAddInvoiceModal(false)} maxWidth="md" fullWidth>
-          <DialogTitle>Nouvelle facture</DialogTitle>
+          <DialogTitle sx={{ pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <ReceiptLong sx={{ mr: 1, color: 'primary.main' }} />
+              Nouvelle facture
+            </Box>
+          </DialogTitle>
           <DialogContent>
-            <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid container spacing={3} sx={{ mt: 1 }}>
               <Grid item xs={12}>
                 <Autocomplete
-                  options={sales.filter(sale => sale.status === 'delivered' || sale.status === 'confirmed')}
+                  options={sales.filter(sale => 
+                    (sale.status === 'delivered' || sale.status === 'confirmed' || sale.status === 'completed') &&
+                    !invoices.some(inv => inv.sale === sale.id)
+                  )}
                   getOptionLabel={(option) => {
                     const client = clients.find(c => c.id === option.client);
                     return `${option.reference} - ${client?.name || 'N/A'} (${formatCurrency(option.total_amount)})`;
@@ -2290,46 +3211,113 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                     setSelectedSale(newValue);
                   }}
                   renderInput={(params) => (
-                    <TextField  {...params}
-                      label="Vente associée"
+                    <TextField {...params}
+                      label="Vente associée *"
                       variant="outlined"
                       fullWidth
-                      required
+                      helperText="Sélectionnez une vente confirmée ou livrée sans facture existante"
                     />
                   )}
                   renderOption={(props, option) => (
                     <li {...props} key={`sale-${option.id}`}>
-                      {option.reference} - {clients.find(c => c.id === option.client)?.name || 'N/A'} ({formatCurrency(option.total_amount)})
+                      <Box>
+                        <Typography variant="body1">
+                          {option.reference} - {clients.find(c => c.id === option.client)?.name || 'N/A'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Montant: {formatCurrency(option.total_amount)} • Date: {new Date(option.date).toLocaleDateString()}
+                        </Typography>
+                      </Box>
                     </li>
                   )}
+                  noOptionsText="Aucune vente éligible pour facturation"
                 />
               </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Date d'émission"
-                  type="date"
-                  defaultValue={new Date().toISOString().split('T')[0]}
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Date d'échéance"
-                  type="date"
-                  defaultValue={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                />
-              </Grid>
+              
+              {selectedSale && (
+                <>
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                      <Typography variant="subtitle1" gutterBottom>Détails de la vente</Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={6}>
+                          <Typography variant="body2" color="text.secondary">Client:</Typography>
+                          <Typography variant="body1">
+                            {clients.find(c => c.id === selectedSale.client)?.name || 'N/A'}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="body2" color="text.secondary">Date de vente:</Typography>
+                          <Typography variant="body1">
+                            {new Date(selectedSale.date).toLocaleDateString()}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="body2" color="text.secondary">Montant total:</Typography>
+                          <Typography variant="h6" color="primary">
+                            {formatCurrency(selectedSale.total_amount)}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="body2" color="text.secondary">Statut:</Typography>
+                          <Chip 
+                            label={getStatusLabel(selectedSale.status)} 
+                            color={getStatusChipColor(selectedSale.status)}
+                            size="small"
+                          />
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Date d'émission"
+                      type="date"
+                      defaultValue={new Date().toISOString().split('T')[0]}
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      onChange={(e) => setNewInvoiceData({...newInvoiceData, date: e.target.value})}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      label="Date d'échéance"
+                      type="date"
+                      defaultValue={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                      fullWidth
+                      InputLabelProps={{ shrink: true }}
+                      onChange={(e) => setNewInvoiceData({...newInvoiceData, due_date: e.target.value})}
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={12}>
+                    <TextField
+                      label="Notes"
+                      multiline
+                      rows={3}
+                      fullWidth
+                      placeholder="Notes additionnelles pour la facture..."
+                      onChange={(e) => setNewInvoiceData({...newInvoiceData, notes: e.target.value})}
+                    />
+                  </Grid>
+                </>
+              )}
             </Grid>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowAddInvoiceModal(false)}>Annuler</Button>
+          <DialogActions sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+            <Button onClick={() => {
+              setShowAddInvoiceModal(false);
+              setSelectedSale(null);
+              setNewInvoiceData({});
+            }}>
+              Annuler
+            </Button>
             <Button
               variant="contained"
               onClick={handleCreateInvoice}
               disabled={!selectedSale}
+              startIcon={<AddIcon />}
             >
               Créer la facture
             </Button>
@@ -2338,15 +3326,56 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
 
         {/* Edit Invoice Dialog */}
         <Dialog open={showEditInvoiceModal} onClose={() => setShowEditInvoiceModal(false)} maxWidth="md" fullWidth>
-          <DialogTitle>Modifier une facture</DialogTitle>
+          <DialogTitle sx={{ pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <EditIcon sx={{ mr: 1, color: 'primary.main' }} />
+                Modifier la facture {editingInvoice?.reference}
+              </Box>
+              {editingInvoice && (
+                <Chip 
+                  label={getInvoiceStatusLabel(editingInvoice.status)} 
+                  color={getInvoiceStatusChipColor(editingInvoice.status)}
+                  size="medium"
+                />
+              )}
+            </Box>
+          </DialogTitle>
           <DialogContent>
             {editingInvoice && (
-              <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid container spacing={3} sx={{ mt: 1 }}>
                 <Grid item xs={12}>
-                  <Typography variant="subtitle1">
-                    Référence: {editingInvoice.reference}
-                  </Typography>
+                  <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                    <Typography variant="subtitle1" gutterBottom>Informations de la facture</Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">Référence:</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                          {editingInvoice.reference}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">Vente associée:</Typography>
+                        <Typography variant="body1">
+                          {editingInvoice.sale_reference || 'N/A'}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">Client:</Typography>
+                        <Typography variant="body1">
+                          {editingInvoice.client_name || 'N/A'}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">Montant total:</Typography>
+                        <Typography variant="h6" color="primary">
+                          {formatCurrency(editingInvoice.amount)}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Paper>
                 </Grid>
+
                 <Grid item xs={12} sm={6}>
                   <TextField
                     label="Date d'émission"
@@ -2367,26 +3396,51 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                     InputLabelProps={{ shrink: true }}
                   />
                 </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Statut</InputLabel>
+                    <Select
+                      value={editingInvoice.status}
+                      onChange={(e) => setEditingInvoice({...editingInvoice, status: e.target.value as ExtendedInvoice['status']})}
+                      label="Statut"
+                    >
+                      <MenuItem value="draft">Brouillon</MenuItem>
+                      <MenuItem value="sent">Envoyée</MenuItem>
+                      <MenuItem value="paid">Payée</MenuItem>
+                      <MenuItem value="overdue">En retard</MenuItem>
+                      <MenuItem value="cancelled">Annulée</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
                 <Grid item xs={12} sm={6}>
                   <TextField
                     label="Montant payé"
-                    type="number"
-                    value={editingInvoice.paid_amount}
+                    type="text"
+                    value={formatNumberDisplay(editingInvoice.paid_amount)}
                     onChange={(e) => {
-                      const paid = Number(e.target.value);
+                      const newValue = validateDecimalInput(e.target.value, editingInvoice.paid_amount);
+                      const balance = editingInvoice.amount - newValue;
                       setEditingInvoice({
                         ...editingInvoice, 
-                        paid_amount: paid,
-                        balance: editingInvoice.amount - paid
+                        paid_amount: newValue,
+                        balance: balance
                       });
                     }}
+                    error={editingInvoice.paid_amount < 0 || editingInvoice.paid_amount > editingInvoice.amount}
+                    helperText={
+                      editingInvoice.paid_amount < 0 ? 'Le montant ne peut pas être négatif' :
+                      editingInvoice.paid_amount > editingInvoice.amount ? 'Le montant payé ne peut pas dépasser le montant total' :
+                      `Solde restant: ${formatCurrency(editingInvoice.balance)}`
+                    }
                     fullWidth
-                    InputLabelProps={{ shrink: true }}
+                    InputProps={{
+                      endAdornment: <InputAdornment position="end">GNF</InputAdornment>
+                    }}
                   />
                 </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="body2">GNF</Typography>
-                </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     label="Notes"
@@ -2395,36 +3449,115 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                     fullWidth
                     value={editingInvoice.notes || ''}
                     onChange={(e) => setEditingInvoice({...editingInvoice, notes: e.target.value})}
+                    placeholder="Notes additionnelles..."
                   />
+                </Grid>
+
+                {/* Payment summary */}
+                <Grid item xs={12}>
+                  <Paper sx={{ p: 2, bgcolor: 'info.lighter' }}>
+                    <Typography variant="subtitle1" gutterBottom>Résumé des paiements</Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={4}>
+                        <Typography variant="body2" color="text.secondary">Montant total:</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                          {formatCurrency(editingInvoice.amount)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="body2" color="text.secondary">Montant payé:</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                          {formatCurrency(editingInvoice.paid_amount)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={4}>
+                        <Typography variant="body2" color="text.secondary">Solde restant:</Typography>
+                        <Typography 
+                          variant="body1" 
+                          sx={{ 
+                            fontWeight: 'medium',
+                            color: editingInvoice.balance > 0 ? 'error.main' : 'success.main'
+                          }}
+                        >
+                          {formatCurrency(editingInvoice.balance)}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Paper>
                 </Grid>
               </Grid>
             )}
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowEditInvoiceModal(false)}>Annuler</Button>
+          <DialogActions sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+            <Button onClick={() => setShowEditInvoiceModal(false)}>
+              Annuler
+            </Button>
             <Button
               variant="contained"
               onClick={handleSaveEditInvoice}
               disabled={!editingInvoice}
+              startIcon={<EditIcon />}
             >
               Enregistrer
             </Button>
-          </DialogActions>        </Dialog>
+          </DialogActions>
+        </Dialog>
 
         {/* Edit Quote Dialog */}
         <Dialog open={showEditQuoteModal} onClose={() => setShowEditQuoteModal(false)} maxWidth="md" fullWidth>
-          <DialogTitle>Modifier le devis</DialogTitle>
+          <DialogTitle sx={{ pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <EditIcon sx={{ mr: 1, color: 'primary.main' }} />
+                Modifier le devis {editingQuote?.reference}
+              </Box>
+              {editingQuote && (
+                <Chip 
+                  label={getQuoteStatusLabel(editingQuote.status)} 
+                  color={getQuoteStatusChipColor(editingQuote.status)}
+                  size="medium"
+                />
+              )}
+            </Box>
+          </DialogTitle>
           <DialogContent>
             {editingQuote && (
-              <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid container spacing={3} sx={{ mt: 1 }}>
                 <Grid item xs={12}>
-                  <Typography variant="subtitle1">
-                    Référence: {editingQuote.reference}
-                  </Typography>
+                  <Paper sx={{ p: 2, bgcolor: 'background.default' }}>
+                    <Typography variant="subtitle1" gutterBottom>Informations du devis</Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">Référence:</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                          {editingQuote.reference}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">Client:</Typography>
+                        <Typography variant="body1">
+                          {clients.find(c => c.id === editingQuote.client)?.name || 'N/A'}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">Montant total:</Typography>
+                        <Typography variant="h6" color="primary">
+                          {formatCurrency(editingQuote.total_amount)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">Créé le:</Typography>
+                        <Typography variant="body1">
+                          {new Date(editingQuote.date).toLocaleDateString()}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Paper>
                 </Grid>
+
                 <Grid item xs={12} sm={6}>
                   <TextField
-                    label="Date"
+                    label="Date du devis"
                     type="date"
                     value={editingQuote.date}
                     onChange={(e) => setEditingQuote({...editingQuote, date: e.target.value})}
@@ -2440,23 +3573,139 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                     onChange={(e) => setEditingQuote({...editingQuote, expiry_date: e.target.value})}
                     fullWidth
                     InputLabelProps={{ shrink: true }}
+                    helperText="Date limite de validité"
                   />
                 </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Statut</InputLabel>
+                    <Select
+                      value={editingQuote.status}
+                      onChange={(e) => setEditingQuote({...editingQuote, status: e.target.value as ApiQuote['status']})}
+                      label="Statut"
+                    >
+                      <MenuItem value="draft">Brouillon</MenuItem>
+                      <MenuItem value="sent">Envoyé</MenuItem>
+                      <MenuItem value="accepted">Accepté</MenuItem>
+                      <MenuItem value="rejected">Rejeté</MenuItem>
+                      <MenuItem value="expired">Expiré</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Validité du devis"
+                    value={`${Math.ceil((new Date(editingQuote.expiry_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} jours`}
+                    fullWidth
+                    disabled
+                    helperText="Jours restants de validité"
+                  />
+                </Grid>
+
                 <Grid item xs={12}>
                   <TextField
                     label="Notes"
                     multiline
-                    rows={3}
+                    rows={4}
                     fullWidth
                     value={editingQuote.notes || ''}
                     onChange={(e) => setEditingQuote({...editingQuote, notes: e.target.value})}
+                    placeholder="Notes ou conditions particulières..."
                   />
+                </Grid>
+
+                {/* Quote summary */}
+                <Grid item xs={12}>
+                  <Paper sx={{ p: 2, bgcolor: 'info.lighter' }}>
+                    <Typography variant="subtitle1" gutterBottom>Résumé du devis</Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">Sous-total:</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                          {formatCurrency(editingQuote.subtotal)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">TVA (20%):</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                          {formatCurrency(editingQuote.tax_amount)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">Total TTC:</Typography>
+                        <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold' }}>
+                          {formatCurrency(editingQuote.total_amount)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">Articles:</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                          {editingQuote.items?.length || 0} produit(s)
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                </Grid>
+
+                {/* Action buttons for quotes */}
+                <Grid item xs={12}>
+                  <Paper sx={{ p: 2, bgcolor: 'warning.lighter' }}>
+                    <Typography variant="subtitle2" gutterBottom>Actions disponibles</Typography>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      {editingQuote.status === 'draft' && (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => setEditingQuote({...editingQuote, status: 'sent'})}
+                        >
+                          Marquer comme envoyé
+                        </Button>
+                      )}
+                      {editingQuote.status === 'sent' && (
+                        <>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            color="success"
+                            onClick={() => setEditingQuote({...editingQuote, status: 'accepted'})}
+                          >
+                            Marquer comme accepté
+                          </Button>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            color="error"
+                            onClick={() => setEditingQuote({...editingQuote, status: 'rejected'})}
+                          >
+                            Marquer comme rejeté
+                          </Button>
+                        </>
+                      )}
+                      {editingQuote.status === 'accepted' && (
+                        <Button
+                          variant="contained"
+                          size="small"
+                          color="primary"
+                          onClick={() => {
+                            setSelectedQuoteForConversion(editingQuote);
+                            setShowQuoteConversionModal(true);
+                          }}
+                        >
+                          Convertir en vente
+                        </Button>
+                      )}
+                    </Box>
+                  </Paper>
                 </Grid>
               </Grid>
             )}
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowEditQuoteModal(false)}>Annuler</Button>
+          <DialogActions sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+            <Button onClick={() => setShowEditQuoteModal(false)}>
+              Annuler
+            </Button>
             <Button
               variant="contained"
               onClick={async () => {
@@ -2470,12 +3719,23 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                   setQuotes(quotes.map(q => q.id === editingQuote.id ? updatedQuote : q));
                   setShowEditQuoteModal(false);
                   setEditingQuote(null);
+                  
+                  setSnackbarState({
+                    open: true,
+                    message: 'Devis mis à jour avec succès',
+                    severity: 'success'
+                  });
                 } catch (err) {
                   console.error('Error updating quote:', err);
-                  setError('Erreur lors de la mise à jour du devis. Veuillez réessayer.');
+                  setSnackbarState({
+                    open: true,
+                    message: 'Erreur lors de la mise à jour du devis',
+                    severity: 'error'
+                  });
                 }
               }}
               disabled={!editingQuote}
+              startIcon={<EditIcon />}
             >
               Enregistrer
             </Button>
@@ -2484,9 +3744,14 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
 
         {/* Add Quote Dialog */}
         <Dialog open={showAddQuoteModal} onClose={() => setShowAddQuoteModal(false)} maxWidth="md" fullWidth>
-          <DialogTitle>Nouveau devis</DialogTitle>
+          <DialogTitle sx={{ pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <ReceiptLong sx={{ mr: 1, color: 'primary.main' }} />
+              Nouveau devis
+            </Box>
+          </DialogTitle>
           <DialogContent>
-            <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid container spacing={3} sx={{ mt: 1 }}>
               <Grid item xs={12}>
                 <Autocomplete
                   options={clients}
@@ -2496,36 +3761,78 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                     setSelectedClient(newValue);
                   }}
                   renderInput={(params) => (
-                    <TextField  {...params}
-                      label="Client"
+                    <TextField {...params}
+                      label="Client *"
                       variant="outlined"
                       fullWidth
-                      required
                     />
                   )}
                   renderOption={(props, option) => (
                     <li {...props} key={`client-${option.id}`}>
-                      {option.name}
+                      <Box>
+                        <Typography variant="body1">{option.name}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {option.email && `Email: ${option.email} • `}
+                          {option.phone && `Tél: ${option.phone}`}
+                        </Typography>
+                      </Box>
                     </li>
                   )}
                 />
               </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Date du devis"
+                  type="date"
+                  value={newQuoteData.date || new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setNewQuoteData({...newQuoteData, date: e.target.value})}
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Date d'expiration"
+                  type="date"
+                  value={newQuoteData.expiry_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                  onChange={(e) => setNewQuoteData({...newQuoteData, expiry_date: e.target.value})}
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                  helperText="Date limite de validité du devis"
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Zone *</InputLabel>
+                  <Select
+                    value={selectedZone}
+                    onChange={(e) => setSelectedZone(Number(e.target.value))}
+                    label="Zone *"
+                  >
+                    {zones.map((zone) => (
+                      <MenuItem key={zone.id} value={zone.id}>{zone.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
               <Grid item xs={12}>
                 <Typography variant="subtitle1" gutterBottom>
-                  Produits
+                  Produits du devis
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}> {/* Added alignment */}
+                <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
                   <Autocomplete
                     options={productsWithStock}
                     getOptionLabel={(option) => `${option.name} (Stock: ${availableStock[option.id!] || 0})`}
                     value={currentProduct}
                     onChange={(event, newValue) => {
                       setCurrentProduct(newValue);
-                      // Reset quantity when product changes
                       setCurrentQuantity(1);
                     }}
                     renderInput={(params) => (
-                      <TextField  {...params}
+                      <TextField {...params}
                         label="Produit"
                         variant="outlined"
                         fullWidth
@@ -2533,28 +3840,52 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                     )}
                     renderOption={(props, option) => (
                       <li {...props} key={`product-${option.id}`}>
-                        {option.name} - Stock disponible: {availableStock[option.id!] || 0}
+                        <Box sx={{ width: '100%' }}>
+                          <Typography variant="body1">{option.name}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Prix: {formatCurrency(option.selling_price)} • Stock: {availableStock[option.id!] || 0}
+                          </Typography>
+                        </Box>
                       </li>
                     )}
                     sx={{ flexGrow: 1 }} 
                   />
                   <TextField
                     label="Quantité"
-                    type="number"
-                    value={currentQuantity}
-                    onChange={(e) => setCurrentQuantity(Number(e.target.value))}
-                    InputProps={{ inputProps: { min: 1 } }}
-                    sx={{ width: 100 }} // Fixed width
+                    type="text"
+                    value={formatNumberDisplay(currentQuantity)}
+                    onChange={(e) => {
+                      const newValue = validateIntegerInput(e.target.value, currentQuantity);
+                      setCurrentQuantity(newValue);
+                    }}
+                    error={currentQuantity < 1 && currentQuantity !== 0}
+                    helperText={getValidationError(currentQuantity, 'quantity')}
+                    sx={{ width: 120 }}
                   />
                   <Button
                     variant="contained"
                     onClick={handleAddProduct}
-                    disabled={!currentProduct || currentQuantity <= 0} // Disable if no product or quantity <= 0
-                    sx={{ height: 'fit-content' }} // Adjust button height
+                    disabled={!currentProduct || currentQuantity <= 0}
+                    sx={{ height: 'fit-content', px: 3 }}
                   >
                     Ajouter
                   </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<QrCodeScannerIcon />}
+                    onClick={openScanner}
+                    sx={{ height: 'fit-content' }}
+                  >
+                    Scanner
+                  </Button>
                 </Box>
+
+                {stockError && (
+                  <Alert severity="warning" sx={{ mt: 1, mb: 2 }}>
+                    {stockError}
+                  </Alert>
+                )}
+
                 {selectedProducts.length > 0 ? (
                   <TableContainer component={Paper} variant="outlined">
                     <Table size="small">
@@ -2570,10 +3901,51 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                       <TableBody>
                         {selectedProducts.map((item, index) => (
                           <TableRow key={index}>
-                            <TableCell>{item.product.name}</TableCell>
-                            <TableCell align="right">{formatCurrency(item.product.selling_price)}</TableCell>
-                            <TableCell align="right">{item.quantity}</TableCell>
-                            <TableCell align="right">{formatCurrency(item.product.selling_price * item.quantity)}</TableCell>
+                            <TableCell>
+                              <Box>
+                                <Typography variant="body2">{item.product.name}</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  Réf: {item.product.reference}
+                                </Typography>
+                              </Box>
+                            </TableCell>
+                            <TableCell align="right">
+                              <TextField
+                                type="text"
+                                value={formatNumberDisplay(item.product.selling_price)}
+                                onChange={(e) => {
+                                  const newPrice = validateDecimalInput(e.target.value, item.product.selling_price);
+                                  const updatedProducts = [...selectedProducts];
+                                  updatedProducts[index].product.selling_price = newPrice;
+                                  setSelectedProducts(updatedProducts);
+                                }}
+                                size="small"
+                                variant="standard"
+                                InputProps={{
+                                  endAdornment: <InputAdornment position="end">GNF</InputAdornment>
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell align="right">
+                              <TextField
+                                type="text"
+                                value={formatNumberDisplay(item.quantity)}
+                                onChange={(e) => {
+                                  const newQuantity = validateIntegerInput(e.target.value, item.quantity);
+                                  const updatedProducts = [...selectedProducts];
+                                  updatedProducts[index].quantity = newQuantity;
+                                  setSelectedProducts(updatedProducts);
+                                }}
+                                size="small"
+                                variant="standard"
+                                sx={{ width: 80 }}
+                              />
+                            </TableCell>
+                            <TableCell align="right">
+                              <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                                {formatCurrency(item.product.selling_price * item.quantity)}
+                              </Typography>
+                            </TableCell>
                             <TableCell align="right">
                               <IconButton
                                 size="small"
@@ -2587,10 +3959,28 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                         ))}
                         <TableRow>
                           <TableCell colSpan={3} align="right" sx={{ fontWeight: 'bold' }}>
-                            Total
+                            Sous-total
                           </TableCell>
                           <TableCell align="right" sx={{ fontWeight: 'bold' }}>
                             {formatCurrency(calculateTotal())}
+                          </TableCell>
+                          <TableCell />
+                        </TableRow>
+                        <TableRow>
+                          <TableCell colSpan={3} align="right">
+                            TVA (20%)
+                          </TableCell>
+                          <TableCell align="right">
+                            {formatCurrency(calculateTotal() * 0.20)}
+                          </TableCell>
+                          <TableCell />
+                        </TableRow>
+                        <TableRow>
+                          <TableCell colSpan={3} align="right" sx={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                            Total TTC
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '1.1em', color: 'primary.main' }}>
+                            {formatCurrency(calculateTotal() * 1.20)}
                           </TableCell>
                           <TableCell />
                         </TableRow>
@@ -2600,33 +3990,39 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                 ) : (
                   <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
                     <Typography variant="body2" color="text.secondary">
-                      Aucun produit sélectionné
+                      Aucun produit ajouté au devis
                     </Typography>
                   </Paper>
                 )}
               </Grid>
+
               <Grid item xs={12}>
-                 <FormControl fullWidth required>
-                   <InputLabel>Zone</InputLabel>
-                   <Select
-                     value={selectedZone} // Assuming selectedZone state is shared or reset appropriately
-                     onChange={(e) => setSelectedZone(Number(e.target.value))}
-                     label="Zone"
-                   >
-                     {zones.map((zone) => (
-                       <MenuItem key={zone.id} value={zone.id}>{zone.name}</MenuItem>
-                     ))}
-                   </Select>
-                 </FormControl>
-               </Grid>
+                <TextField
+                  label="Notes"
+                  multiline
+                  rows={3}
+                  fullWidth
+                  value={newQuoteData.notes || ''}
+                  onChange={(e) => setNewQuoteData({...newQuoteData, notes: e.target.value})}
+                  placeholder="Notes ou conditions particulières du devis..."
+                />
+              </Grid>
             </Grid>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowAddQuoteModal(false)}>Annuler</Button>
+          <DialogActions sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+            <Button onClick={() => {
+              setShowAddQuoteModal(false);
+              setSelectedClient(null);
+              setSelectedProducts([]);
+              setNewQuoteData({});
+            }}>
+              Annuler
+            </Button>
             <Button
               variant="contained"
               onClick={handleCreateQuote}
-              disabled={!selectedClient || selectedProducts.length === 0}
+              disabled={!selectedClient || selectedProducts.length === 0 || !selectedZone}
+              startIcon={<AddIcon />}
             >
               Créer le devis
             </Button>
@@ -2713,13 +4109,15 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
                 <Box sx={{ mt: 2 }}>
                   <TextField
                     label="Quantité"
-                    type="number"
-                    value={scannedQuantity}
-                    onChange={(e) => setScannedQuantity(Number(e.target.value))}
-                    fullWidth
-                    InputProps={{
-                      inputProps: { min: 1 }
+                    type="text"
+                    value={formatNumberDisplay(scannedQuantity)}
+                    onChange={(e) => {
+                      const newValue = validateIntegerInput(e.target.value, scannedQuantity);
+                      setScannedQuantity(newValue);
                     }}
+                    error={scannedQuantity < 1 && scannedQuantity !== 0}
+                    helperText={getValidationError(scannedQuantity, 'quantity')}
+                    fullWidth
                     size="small"
                   />
                 </Box>
@@ -2748,13 +4146,105 @@ const getStatusChipColor = (status: string): "default" | "primary" | "secondary"
           </Alert>
         </Snackbar>
 
-        {/* Success message alert */}
+        {/* Delete Confirmation Dialog */}
+        <Dialog 
+          open={showDeleteDialog} 
+          onClose={handleCancelDelete}
+          PaperProps={{
+            sx: {
+              borderRadius: 2,
+              boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+              backgroundColor: 'background.paper'
+            }
+          }}
+        >
+          <DialogTitle sx={{ 
+            backgroundColor: 'error.main', 
+            color: '#fff',
+            fontWeight: 'bold'
+          }}>
+            Confirmation de suppression
+          </DialogTitle>
+          <DialogContent sx={{ 
+            p: 3, 
+            mt: 2, 
+            backgroundColor: 'background.paper' 
+          }}>
+            <DialogContentText color="text.primary" sx={{ mb: 2 }}>
+              Êtes-vous sûr de vouloir supprimer la vente <strong>{saleToDelete?.reference}</strong> ?
+            </DialogContentText>
+            
+            {deleteConfirmationInfo && (
+              <Box sx={{ mt: 2 }}>
+                {deleteConfirmationInfo.willRestoreStock && (
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    ⚠️ Cette action va restaurer le stock des produits vendus.
+                  </Alert>
+                )}
+                
+                {deleteConfirmationInfo.hasPayments && deleteConfirmationInfo.willRefundAmount > 0 && (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    💰 Le montant payé ({formatCurrency(deleteConfirmationInfo.willRefundAmount)}) sera crédité au compte du client.
+                  </Alert>
+                )}
+                
+                <Alert severity="error">
+                  Cette action est irréversible.
+                </Alert>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ 
+            p: 2, 
+            backgroundColor: 'rgba(0,0,0,0.02)'
+          }}>
+            <Button 
+              onClick={handleCancelDelete} 
+              disabled={loading}
+              variant="outlined"
+              sx={{ borderRadius: '20px' }}
+            >
+              Annuler
+            </Button>
+            <Button 
+              variant="contained" 
+              color="error" 
+              onClick={handleConfirmDelete}
+              disabled={loading}
+              startIcon={loading ? <CircularProgress size={20} /> : <DeleteIcon />}
+              sx={{ 
+                borderRadius: '20px',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+                '&:hover': {
+                  boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
+                }
+              }}
+            >
+              {loading ? 'Suppression...' : 'Supprimer'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Success message snackbar */}
         {successMessage && (
-          <Box sx={{ mt: 2 }}>
-            <Alert severity="success" sx={{ mb: 3 }}>
+          <Snackbar
+            open={Boolean(successMessage)}
+            autoHideDuration={8000}
+            onClose={() => setSuccessMessage(null)}
+            anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+          >
+            <Alert 
+              onClose={() => setSuccessMessage(null)} 
+              severity="success" 
+              sx={{ 
+                width: '100%',
+                maxWidth: 600,
+                whiteSpace: 'pre-line' // This allows \n to create line breaks
+              }}
+            >
               {successMessage}
             </Alert>
-          </Box>
+          </Snackbar>
         )}
       </Box>
     </PermissionGuard>

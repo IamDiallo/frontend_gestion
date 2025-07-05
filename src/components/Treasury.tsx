@@ -2,11 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Box, Paper, Typography, Tabs, Tab, Button, TextField, Dialog,
   DialogTitle, DialogContent, DialogActions, Grid, CircularProgress,
-  Snackbar, Alert, IconButton, Table, TableHead, TableBody,
-  TableCell, TableContainer, TableRow, TablePagination, FormControl,
+  Snackbar, Alert, AlertTitle, IconButton, TablePagination,
   Autocomplete, Card, CardContent,
   Divider, Chip, Stack, Tooltip, Avatar,
-  Grow, Slide, FormLabel, InputAdornment
+  Grow, Slide, InputAdornment
 } from '@mui/material';
 import { DataGrid, GridRenderCellParams, GridToolbar } from '@mui/x-data-grid';
 import { styled } from '@mui/material/styles';
@@ -24,10 +23,19 @@ import MoneyIcon from '@mui/icons-material/Money';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import DownloadIcon from '@mui/icons-material/Download';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import WarningIcon from '@mui/icons-material/Warning';
+
 import { useSnackbar } from 'notistack';
 import { ClientsAPI, SettingsAPI, TreasuryAPI, SalesAPI, AccountsAPI } from '../services/api';
 import { Client, Account, ClientDeposit, TabPanelProps, ClientAccountBalance, OutstandingSale, AccountStatement } from '../interfaces/business';
 import { AccountTransfer } from '../interfaces/financial';
+import { 
+  validateDecimalInput, 
+  formatNumberDisplay, 
+  getValidationError,
+  validateAmountInput,
+  getAmountValidationError 
+} from '../utils/inputValidation';
 
 
 
@@ -36,11 +44,6 @@ const StyledPaper = styled(Paper)(() => ({
   borderRadius: 12,
   boxShadow: '0 4px 12px 0 rgba(0,0,0,0.05)',
   overflow: 'hidden',
-}));
-
-const StyledTableCell = styled(TableCell)(({ theme }) => ({
-  fontWeight: 500,
-  backgroundColor: theme.palette.mode === 'dark' ? theme.palette.grey[800] : theme.palette.grey[100],
 }));
 
 const ClientInfoCard = styled(Card)(() => ({
@@ -345,22 +348,103 @@ const Treasury = () => {
     try {
       setProcessingPayment(true);
       setError(null);
-        // Validate client has enough balance
-      if (clientBalanceData && clientBalanceData.client.current_balance < paymentAmount) {
-        setError("Le client n'a pas suffisamment de solde dans son compte.");
-        setProcessingPayment(false);
-        return;
+        
+      // Check if this will be a credit payment
+      const isCreditPayment = clientBalanceData && clientBalanceData.client.current_balance < paymentAmount;
+      
+      // If it's a credit payment, confirm with the user
+      if (isCreditPayment) {
+        const creditAmount = clientBalanceData 
+          ? Math.abs(clientBalanceData.client.current_balance - paymentAmount)
+          : paymentAmount;
+          
+        if (!window.confirm(`ATTENTION: Ce paiement dépassera le solde disponible du client et créera un crédit de ${formatCurrency(creditAmount)}. Voulez-vous continuer?`)) {
+          setProcessingPayment(false);
+          return;
+        }
       }
         // Pay directly from account
+      // Define the type for our enhanced API response
+      interface EnhancedPaymentResponse {
+        success: boolean;
+        message: string;
+        payment: {
+          id: number;
+          reference: string;
+          amount: number;
+          date: string;
+        };
+        sale: {
+          id: number;
+          reference: string;
+          payment_status: string;
+          workflow_state: string;
+          status: string;
+          total_amount: number;
+          paid_amount: number;
+          remaining_amount: number;
+        };
+        client_balance: number;
+        is_credit_payment: boolean;
+      }
+      
       const response = await SalesAPI.payFromAccount(
         selectedSaleForPayment.id,
         { 
           amount: paymentAmount,
           description: paymentDescription || `Paiement pour la vente ${selectedSaleForPayment.reference} depuis le compte client`
         }
-      );
-        // Show success message
-      setSuccessMessage(`Paiement de ${formatCurrency(response.payment.amount)} traité avec succès. Nouveau solde client: ${formatCurrency(response.client_balance)}`);
+      ) as EnhancedPaymentResponse;
+      
+        // Show success message with credit warning if applicable
+      let successMsg = `Paiement de ${formatCurrency(response.payment.amount)} traité avec succès. Nouveau solde client: ${formatCurrency(response.client_balance)}`;
+      
+      // Add credit warning if this was a credit payment
+      if (response.is_credit_payment) {
+        successMsg = `⚠️ PAIEMENT À CRÉDIT: ${successMsg}`;
+        // Also show a toast notification about the credit
+        enqueueSnackbar(`Attention: Un crédit de ${formatCurrency(Math.abs(response.client_balance))} a été accordé à ce client`, { 
+          variant: 'warning',
+          autoHideDuration: 10000,
+          anchorOrigin: {
+            vertical: 'top',
+            horizontal: 'center',
+          }
+        });
+      }
+      
+      // Add information about partial payment
+      if (response.sale.payment_status === 'partially_paid') {
+        // Extract payment details from the response
+        const paidAmount = response.sale.paid_amount;
+        const totalAmount = response.sale.total_amount;
+        const remainingAmount = response.sale.remaining_amount;
+        
+        // Add partial payment info to success message
+        successMsg += `\nPaiement partiel: ${formatCurrency(paidAmount)} payé, ${formatCurrency(remainingAmount)} restant.`;
+        
+        // Show notification about partial payment
+        enqueueSnackbar(
+          <Box>
+            <Typography variant="subtitle2">Paiement partiel enregistré</Typography>
+            <Typography variant="body2">
+              {formatCurrency(paidAmount)} payé sur {formatCurrency(totalAmount)}
+              <br />
+              {formatCurrency(remainingAmount)} restant à payer
+            </Typography>
+          </Box>, 
+          { 
+            variant: 'info',
+            autoHideDuration: 8000,
+            anchorOrigin: {
+              vertical: 'bottom',
+              horizontal: 'center',
+            }
+          }
+        );
+      }
+      
+      setSuccessMessage(successMsg);
       setShowSuccessSnackbar(true);
       setTimeout(() => {
         setShowSuccessSnackbar(false);
@@ -929,61 +1013,196 @@ const Treasury = () => {
                       </Card>
 
                       {clientBalanceData.outstanding_sales && clientBalanceData.outstanding_sales.length > 0 && (
-                        <Box sx={{ mt: 3 }}>
-                          <Typography variant="h6" gutterBottom>
-                            Ventes non soldées
-                          </Typography>
-                          <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
-                            <Table size="small">
-                              <TableHead>
-                                <TableRow>
-                                  <StyledTableCell>Référence</StyledTableCell>
-                                  <StyledTableCell>Date</StyledTableCell>
-                                  <StyledTableCell align="right">Montant</StyledTableCell>
-                                  <StyledTableCell align="right">Payé</StyledTableCell>
-                                  <StyledTableCell align="right">Solde</StyledTableCell>
-                                  <StyledTableCell>Statut</StyledTableCell>
-                                  <StyledTableCell align="center">Actions</StyledTableCell>
-                                </TableRow>
-                              </TableHead>
-                              <TableBody>
-                                {clientBalanceData.outstanding_sales.map((sale) => (
-                                  <TableRow key={sale.id} hover>
-                                    <TableCell>{sale.reference}</TableCell>
-                                    <TableCell>{formatDate(sale.date)}</TableCell>
-                                    <TableCell align="right">{formatCurrency(sale.total_amount)}</TableCell>
-                                    <TableCell align="right">{formatCurrency(sale.paid_amount)}</TableCell>
-                                    <TableCell align="right">{formatCurrency(sale.balance)}</TableCell>
-                                    <TableCell>
-                                      <Chip
-                                        label={getPaymentStatusLabel(sale.payment_status)}
-                                        color={getPaymentStatusColor(sale.payment_status)}
-                                        size="small"
-                                        variant="outlined"
-                                      />
-                                    </TableCell>
-                                    <TableCell align="center">
-                                      <Tooltip title="Effectuer un paiement">
-                                        <IconButton 
-                                          size="small" 
-                                          color="primary"
-                                          onClick={() => {
-                                            setSelectedSaleForPayment(sale);
-                                            setPaymentAmount(sale.balance);
-                                            setPaymentDescription(`Paiement pour la vente ${sale.reference}`);
-                                            setShowPaymentModal(true);
-                                          }}
-                                        >
-                                          <PaymentIcon fontSize="small" />
-                                        </IconButton>
-                                      </Tooltip>
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </TableContainer>
-                        </Box>
+                        <Paper sx={{ mb: 3, overflow: 'hidden', height: 420 }} elevation={2}>
+                          <Box sx={{ bgcolor: 'warning.light', px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography variant="subtitle1" fontWeight="bold" color="warning.contrastText">
+                              <WarningIcon sx={{ fontSize: 20, mr: 1, verticalAlign: 'text-bottom' }} />
+                              Ventes non soldées
+                            </Typography>
+                            <Box>
+                              <Tooltip title="Exporter les données">
+                                <IconButton size="small" sx={{ color: 'warning.contrastText' }}>
+                                  <DownloadIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Filtrer les ventes">
+                                <IconButton size="small" sx={{ color: 'warning.contrastText' }}>
+                                  <FilterListIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          </Box>
+                          
+                          <Box sx={{ height: 360, width: '100%' }}>
+                            <DataGrid
+                              rows={clientBalanceData.outstanding_sales.map(sale => ({
+                                id: sale.id,
+                                reference: sale.reference,
+                                date: formatDate(sale.date),
+                                rawDate: sale.date,
+                                total_amount: sale.total_amount,
+                                paid_amount: sale.paid_amount,
+                                balance: sale.payment_status === 'unpaid' && sale.balance === 0 ? sale.total_amount : sale.balance,
+                                payment_status: sale.payment_status,
+                                actions: sale
+                              }))}
+                              columns={[
+                                { 
+                                  field: 'date', 
+                                  headerName: 'Date', 
+                                  width: 120,
+                                  sortComparator: (v1, v2, param1, param2) => {
+                                    const d1 = new Date(param1.api.getCellValue(param1.id, 'rawDate'));
+                                    const d2 = new Date(param2.api.getCellValue(param2.id, 'rawDate'));
+                                    return d1.getTime() - d2.getTime();
+                                  }
+                                },
+                                { field: 'reference', headerName: 'Référence', width: 140 },
+                                { 
+                                  field: 'total_amount', 
+                                  headerName: 'Montant', 
+                                  width: 130,
+                                  align: 'right',
+                                  headerAlign: 'right',
+                                  renderCell: (params) => (
+                                    <Typography variant="body2" fontWeight="500">
+                                      {formatCurrency(params.value)}
+                                    </Typography>
+                                  )
+                                },
+                                { 
+                                  field: 'paid_amount', 
+                                  headerName: 'Payé', 
+                                  width: 130,
+                                  align: 'right',
+                                  headerAlign: 'right',
+                                  renderCell: (params) => (
+                                    <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 500 }}>
+                                      {formatCurrency(params.value)}
+                                    </Typography>
+                                  )
+                                },
+                                { 
+                                  field: 'balance', 
+                                  headerName: 'Solde', 
+                                  width: 130,
+                                  align: 'right',
+                                  headerAlign: 'right',
+                                  renderCell: (params) => (
+                                    <Typography 
+                                      variant="body2" 
+                                      fontWeight="bold"
+                                      sx={{ 
+                                        color: 'error.main',
+                                        backgroundColor: 'rgba(211, 47, 47, 0.1)',
+                                        py: 0.5,
+                                        px: 1,
+                                        borderRadius: 1,
+                                        fontSize: '0.8125rem'
+                                      }}
+                                    >
+                                      {formatCurrency(params.value)}
+                                    </Typography>
+                                  )
+                                },
+                                { 
+                                  field: 'payment_status', 
+                                  headerName: 'Statut', 
+                                  width: 140,
+                                  renderCell: (params) => (
+                                    <Chip
+                                      label={getPaymentStatusLabel(params.value)}
+                                      color={getPaymentStatusColor(params.value)}
+                                      size="small"
+                                      sx={{ fontWeight: 500 }}
+                                    />
+                                  )
+                                },
+                                { 
+                                  field: 'actions', 
+                                  headerName: 'Actions', 
+                                  width: 100,
+                                  align: 'center',
+                                  headerAlign: 'center',
+                                  sortable: false,
+                                  renderCell: (params) => (
+                                    <Tooltip title="Effectuer un paiement">
+                                      <IconButton 
+                                        size="small" 
+                                        color="primary"
+                                        onClick={() => {
+                                          const sale = params.value;
+                                          const actualBalance = sale.payment_status === 'unpaid' && sale.balance === 0 
+                                            ? sale.total_amount 
+                                            : sale.balance;
+                                          
+                                          const saleWithCorrectBalance = {
+                                            ...sale,
+                                            balance: actualBalance
+                                          };
+                                          
+                                          setSelectedSaleForPayment(saleWithCorrectBalance);
+                                          
+                                          if (clientBalanceData) {
+                                            const availableBalance = clientBalanceData.client.current_balance;
+                                            if (availableBalance > 0 && availableBalance < actualBalance) {
+                                              setPaymentAmount(availableBalance);
+                                            } else {
+                                              setPaymentAmount(actualBalance);
+                                            }
+                                          } else {
+                                            setPaymentAmount(actualBalance);
+                                          }
+                                          
+                                          setPaymentDescription(`Paiement pour la vente ${sale.reference}`);
+                                          setShowPaymentModal(true);
+                                        }}
+                                      >
+                                        <PaymentIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )
+                                }
+                              ]}
+                              getRowClassName={(params) => 
+                                params.indexRelativeToCurrentPage % 2 === 0 ? '' : 'even-row'
+                              }
+                              initialState={{
+                                pagination: {
+                                  paginationModel: { pageSize: 5, page: 0 },
+                                },
+                                sorting: {
+                                  sortModel: [{ field: 'rawDate', sort: 'desc' }],
+                                },
+                              }}
+                              density="compact"
+                              disableRowSelectionOnClick
+                              slots={{
+                                toolbar: GridToolbar,
+                              }}
+                              slotProps={{
+                                toolbar: {
+                                  showQuickFilter: true,
+                                  quickFilterProps: { debounceMs: 300 },
+                                },
+                              }}
+                              sx={{
+                                border: 'none',
+                                '& .MuiDataGrid-cell:focus': {
+                                  outline: 'none',
+                                },
+                                '& .even-row': {
+                                  bgcolor: 'rgba(0, 0, 0, 0.02)',
+                                },
+                                '& .MuiDataGrid-columnHeaders': {
+                                  backgroundColor: 'rgba(0, 0, 0, 0.03)',
+                                  borderRadius: 0,
+                                }
+                              }}
+                              pageSizeOptions={[5, 10, 25]}
+                            />
+                          </Box>
+                        </Paper>
                       )}                      <Paper sx={{ mb: 3, overflow: 'hidden', height: 520 }} elevation={2}>
                         <Box sx={{ bgcolor: 'primary.light', px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <Typography variant="subtitle1" fontWeight="bold" color="primary.contrastText">
@@ -1587,13 +1806,17 @@ const Treasury = () => {
             <Grid item xs={12} md={6}>
               <TextField
                 label="Montant"
-                type="number"
-                value={accountTransfer.amount}
-                onChange={(e) => setAccountTransfer({...accountTransfer, amount: Number(e.target.value)})}
+                type="text"
+                value={formatNumberDisplay(accountTransfer.amount)}
+                onChange={(e) => {
+                  const newValue = validateDecimalInput(e.target.value, accountTransfer.amount);
+                  setAccountTransfer({...accountTransfer, amount: newValue});
+                }}
                 fullWidth
                 required
+                error={accountTransfer.amount <= 0}
+                helperText={getValidationError(accountTransfer.amount, 'amount')}
                 InputProps={{
-                  inputProps: { min: 0, step: 0.01 },
                   startAdornment: (
                     <InputAdornment position="start">
                       <MoneyIcon />
@@ -1749,14 +1972,16 @@ const Treasury = () => {
               <Grid item xs={12} md={6}>
                 <TextField
                   label="Montant"
-                  type="number"
-                  value={newDeposit.amount}
-                  onChange={(e) => setNewDeposit({...newDeposit, amount: Number(e.target.value)})}
+                  type="text"
+                  value={formatNumberDisplay(newDeposit.amount)}
+                  onChange={(e) => {
+                    const newValue = validateDecimalInput(e.target.value, newDeposit.amount);
+                    setNewDeposit({...newDeposit, amount: newValue});
+                  }}
                   fullWidth
                   required
-                  InputProps={{
-                    inputProps: { min: 0, step: 0.01 }
-                  }}
+                  error={newDeposit.amount <= 0}
+                  helperText={getValidationError(newDeposit.amount, 'amount')}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
@@ -1814,68 +2039,257 @@ const Treasury = () => {
           sx: { borderRadius: 2 }
         }}
       >
-        <DialogTitle>
-          Paiement de vente
+        <DialogTitle sx={{ borderBottom: 1, borderColor: 'divider', pb: 2, display: 'flex', alignItems: 'center' }}>
+          <PaymentIcon sx={{ mr: 1, color: 'primary.main' }} />
+          <Typography variant="h6" component="div">
+            Paiement de vente
+          </Typography>
         </DialogTitle>
-        <Divider />
         <DialogContent>
           {selectedSaleForPayment && (
             <Box sx={{ py: 2 }}>
-              <Grid container spacing={3}>
-                <Grid item xs={12}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Référence de la vente: {selectedSaleForPayment.reference}
-                  </Typography>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Client: {selectedClient?.name || 'N/A'}
-                  </Typography>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Montant total: {formatCurrency(selectedSaleForPayment.total_amount)}
-                  </Typography>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Montant restant: {formatCurrency(selectedSaleForPayment.balance)}
-                  </Typography>
-                  {clientBalanceData && (                    <Typography 
-                      variant="subtitle1" 
-                      gutterBottom 
-                      color={clientBalanceData.client.current_balance >= paymentAmount ? 'success.main' : 'error.main'}
-                    >
-                      Solde du compte client: {formatCurrency(clientBalanceData.client.current_balance)}
+              {selectedSaleForPayment.payment_status === 'paid' ? (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  <AlertTitle>Vente déjà payée</AlertTitle>
+                  Cette vente a déjà été entièrement payée. Aucun paiement supplémentaire n'est nécessaire.
+                </Alert>
+              ) : null}
+              
+              {/* Sale information card */}
+              <Paper 
+                variant="outlined" 
+                sx={{ p: 2, mb: 3, borderRadius: 1, borderColor: 'divider', backgroundColor: 'background.paper' }}
+              >
+                <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, fontWeight: 'medium', borderBottom: 1, pb: 1, borderColor: 'divider' }}>
+                  Informations de la vente
+                </Typography>
+                
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="text.secondary">
+                      Référence
                     </Typography>
-                  )}
-                </Grid>                {/* Simplified to only account payments */}
-                <Grid item xs={12}>
-                  <FormControl component="fieldset">
-                    <FormLabel component="legend">Source du paiement</FormLabel>                    <Typography variant="body2" sx={{ mt: 1 }}>
-                      Payer depuis le compte client (Solde: {clientBalanceData ? formatCurrency(clientBalanceData.client.current_balance) : 'Chargement...'})
+                    <Typography variant="subtitle1" fontWeight="medium">
+                      {selectedSaleForPayment.reference}
                     </Typography>
-                    {(!clientBalanceData || clientBalanceData.client.current_balance <= 0) && (
-                      <Typography variant="caption" color="error" sx={{ mt: 0.5 }}>
-                        Solde insuffisant. Veuillez effectuer un dépôt d'abord.
-                      </Typography>
-                    )}
-                  </FormControl>
+                  </Grid>
+                  
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="text.secondary">
+                      Client
+                    </Typography>
+                    <Typography variant="subtitle1" fontWeight="medium">
+                      {selectedClient?.name || 'N/A'}
+                    </Typography>
+                  </Grid>
+                  
+                  <Grid item xs={12}>
+                    <Divider sx={{ my: 1 }} />
+                  </Grid>
+                  
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Montant total
+                    </Typography>
+                    <Typography variant="subtitle1" fontWeight="medium">
+                      {formatCurrency(selectedSaleForPayment.total_amount)}
+                    </Typography>
+                  </Grid>
+                  
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Déjà payé
+                    </Typography>
+                    <Typography variant="subtitle1" fontWeight="medium" color="success.main">
+                      {formatCurrency(selectedSaleForPayment.paid_amount)}
+                    </Typography>
+                  </Grid>
+                  
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Montant restant
+                    </Typography>
+                    <Typography variant="subtitle1" fontWeight="medium" color={selectedSaleForPayment.balance > 0 ? "error.main" : "success.main"}>
+                      {formatCurrency(selectedSaleForPayment.payment_status === 'unpaid' && selectedSaleForPayment.balance === 0 
+                        ? selectedSaleForPayment.total_amount 
+                        : Math.max(0, selectedSaleForPayment.balance))}
+                    </Typography>
+                  </Grid>
                 </Grid>
-
+              </Paper>
+              
+              {/* Client account balance card */}
+              <Paper 
+                variant="outlined" 
+                sx={{ 
+                  p: 2, 
+                  mb: 3, 
+                  borderRadius: 1, 
+                  borderColor: clientBalanceData && clientBalanceData.client.current_balance < 0 ? 'error.main' : 'divider',
+                  backgroundColor: 'background.paper',
+                  borderWidth: clientBalanceData && clientBalanceData.client.current_balance < 0 ? 2 : 1
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <AccountBalanceWalletIcon sx={{ mr: 1, color: clientBalanceData && clientBalanceData.client.current_balance >= 0 ? 'success.main' : 'error.main' }} />
+                  <Typography variant="h6" color="primary" sx={{ fontWeight: 'medium' }}>
+                    Compte client
+                  </Typography>
+                </Box>
+                
+                <Grid container alignItems="center" spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Solde disponible
+                    </Typography>
+                    <Typography 
+                      variant="h6" 
+                      fontWeight="medium"
+                      color={clientBalanceData && clientBalanceData.client.current_balance >= 0 ? 'success.main' : 'error.main'}
+                    >
+                      {clientBalanceData ? formatCurrency(clientBalanceData.client.current_balance) : 'Chargement...'}
+                    </Typography>
+                  </Grid>
+                  
+                  {(!clientBalanceData || clientBalanceData.client.current_balance <= 0) && (
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="caption" color="error" sx={{ display: 'flex', alignItems: 'center' }}>
+                        <WarningIcon fontSize="small" sx={{ mr: 0.5 }} />
+                        Solde insuffisant. Un paiement à crédit sera créé.
+                      </Typography>
+                    </Grid>
+                  )}
+                </Grid>
+              </Paper>
+              
+              {/* Payment information */}
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mt: 3, mb: 2, fontWeight: 'medium' }}>
+                Détails du paiement
+              </Typography>
+              
+              <Grid container spacing={3}>
                 <Grid item xs={12}>
                   <TextField
                     label="Montant du paiement"
-                    type="number"
+                    type="text"
                     fullWidth
                     required
-                    value={paymentAmount}
-                    onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                    value={formatNumberDisplay(paymentAmount)}
+                    onChange={(e) => {
+                      const maxValue = selectedSaleForPayment ? selectedSaleForPayment.balance : undefined;
+                      const newValue = validateAmountInput(e.target.value, paymentAmount, maxValue);
+                      setPaymentAmount(newValue);
+                    }}
+                    error={paymentAmount <= 0 || (selectedSaleForPayment && paymentAmount > selectedSaleForPayment.balance)}
+                    helperText={getAmountValidationError(paymentAmount, selectedSaleForPayment?.balance)}
                     InputProps={{ 
-                      inputProps: { min: 0, max: selectedSaleForPayment.balance },
                       startAdornment: (
                         <InputAdornment position="start">
-                          <MoneyIcon />
+                          <MoneyIcon color={
+                            clientBalanceData && clientBalanceData.client.current_balance < paymentAmount 
+                              ? "warning" 
+                              : "primary"
+                          } />
                         </InputAdornment>
                       )
-                    }}                    error={clientBalanceData && clientBalanceData.client.current_balance < paymentAmount}
-                    helperText={clientBalanceData && clientBalanceData.client.current_balance < paymentAmount ? 
-                      "Solde insuffisant sur le compte client" : ""}
+                    }}
+                    color={clientBalanceData && clientBalanceData.client.current_balance < paymentAmount ? "warning" : (
+                      selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance ? "info" : "primary"
+                    )}
                   />
+                  
+                  {/* Payment summary card with dynamic coloring based on payment type */}
+                  <Box sx={{ mt: 3, mb: 2 }}>
+                    <Paper 
+                      variant="outlined" 
+                      sx={{ 
+                        p: 2,
+                        borderRadius: 1,
+                        borderColor: clientBalanceData && clientBalanceData.client.current_balance < paymentAmount 
+                          ? 'warning.main' 
+                          : (selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance 
+                            ? 'info.main' 
+                            : 'success.main'),
+                        borderWidth: 2,
+                        backgroundColor: clientBalanceData && clientBalanceData.client.current_balance < paymentAmount
+                          ? 'rgba(237, 108, 2, 0.08)'  // warning light background
+                          : (selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance
+                            ? 'rgba(3, 169, 244, 0.08)'  // info light background
+                            : 'rgba(46, 125, 50, 0.08)'),  // success light background
+                        boxShadow: 1
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
+                        <Box sx={{ mr: 2, mt: 0.5 }}>
+                          {clientBalanceData && clientBalanceData.client.current_balance < paymentAmount ? (
+                            <WarningIcon fontSize="large" color="warning" />
+                          ) : (
+                            selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance ? (
+                              <PaymentIcon fontSize="large" color="info" />
+                            ) : (
+                              <PaymentIcon fontSize="large" color="success" />
+                            )
+                          )}
+                        </Box>
+                        
+                        <Box sx={{ flexGrow: 1 }}>
+                          <Typography variant="h6" gutterBottom fontWeight="bold">
+                            {clientBalanceData && clientBalanceData.client.current_balance < paymentAmount
+                              ? "Paiement à crédit"
+                              : (selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance
+                                ? "Paiement partiel"
+                                : "Paiement total")}
+                          </Typography>
+                          
+                          {clientBalanceData && clientBalanceData.client.current_balance < paymentAmount ? (
+                            <Typography variant="body2">
+                              Ce paiement dépassera le solde disponible du client de {formatCurrency(paymentAmount - clientBalanceData.client.current_balance)} et créera un crédit.
+                            </Typography>
+                          ) : (
+                            selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance ? (
+                              <Typography variant="body2">
+                                Vous effectuez un paiement partiel de {formatCurrency(paymentAmount)}. Un montant de {formatCurrency(selectedSaleForPayment.balance - paymentAmount)} restera à payer.
+                                Le statut de la vente sera mis à jour en "Partiellement payé".
+                              </Typography>
+                            ) : (
+                              <Typography variant="body2">
+                                Vous effectuez le paiement total de cette vente d'un montant de {formatCurrency(paymentAmount)}.
+                                Le statut de la vente sera mis à jour en "Payé".
+                              </Typography>
+                            )
+                          )}
+                          
+                          {/* Show payment amount breakdown */}
+                          <Grid container spacing={2} sx={{ mt: 1 }}>
+                            <Grid item xs={6} sm={4}>
+                              <Typography variant="caption" color="text.secondary">Montant du paiement</Typography>
+                              <Typography variant="subtitle1" fontWeight="medium">
+                                {formatCurrency(paymentAmount)}
+                              </Typography>
+                            </Grid>
+                            
+                            <Grid item xs={6} sm={4}>
+                              <Typography variant="caption" color="text.secondary">Solde client utilisé</Typography>
+                              <Typography variant="subtitle1" fontWeight="medium">
+                                {clientBalanceData 
+                                  ? formatCurrency(Math.min(clientBalanceData.client.current_balance, paymentAmount))
+                                  : "Chargement..."}
+                              </Typography>
+                            </Grid>
+                            
+                            {clientBalanceData && clientBalanceData.client.current_balance < paymentAmount && (
+                              <Grid item xs={6} sm={4}>
+                                <Typography variant="caption" color="error.main">Montant à crédit</Typography>
+                                <Typography variant="subtitle1" fontWeight="medium" color="error.main">
+                                  {formatCurrency(paymentAmount - clientBalanceData.client.current_balance)}
+                                </Typography>
+                              </Grid>
+                            )}
+                          </Grid>
+                        </Box>
+                      </Box>
+                    </Paper>
+                  </Box>
                 </Grid>
                 
                 <Grid item xs={12}>
@@ -1887,6 +2301,14 @@ const Treasury = () => {
                     value={paymentDescription}
                     onChange={(e) => setPaymentDescription(e.target.value)}
                     placeholder="Description du paiement"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <ReceiptIcon color="action" />
+                        </InputAdornment>
+                      ),
+                    }}
+                    helperText="Ajoutez une description facultative pour ce paiement"
                   />
                 </Grid>
               </Grid>
@@ -1894,26 +2316,50 @@ const Treasury = () => {
           )}
         </DialogContent>
         <Divider />
-        <DialogActions sx={{ px: 3, py: 2 }}>
+        <DialogActions sx={{ px: 3, py: 2, justifyContent: 'space-between' }}>
           <Button 
             onClick={() => setShowPaymentModal(false)}
             variant="outlined"
+            startIcon={<ArrowBackIcon />}
           >
             Annuler
           </Button>
           <Button
             variant="contained"
-            color="primary"
-            onClick={handlePayFromAccount}            disabled={
+            color={clientBalanceData && clientBalanceData.client.current_balance < paymentAmount 
+              ? "warning" 
+              : (selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance 
+                ? "info" 
+                : "primary")}
+            onClick={handlePayFromAccount}
+            disabled={
               processingPayment || 
               !selectedSaleForPayment || 
               paymentAmount <= 0 ||
-              paymentAmount > selectedSaleForPayment.balance ||
-              (!clientBalanceData || clientBalanceData.client.current_balance < paymentAmount)
+              (selectedSaleForPayment && paymentAmount > selectedSaleForPayment.balance) ||
+              (selectedSaleForPayment && selectedSaleForPayment.payment_status === 'paid') // Disable if already paid
             }
-            startIcon={processingPayment ? <CircularProgress size={20} /> : <AccountBalanceIcon />}
+            startIcon={processingPayment ? <CircularProgress size={20} /> : <PaymentIcon />}
+            sx={{ 
+              fontWeight: 'medium',
+              minWidth: '200px',
+              px: 3
+            }}
           >
-            {processingPayment ? 'Traitement...' : 'Effectuer le paiement'}
+            {processingPayment ? 'Traitement...' : (
+              !selectedSaleForPayment ? 'Effectuer le paiement' : (
+                selectedSaleForPayment.payment_status === 'paid' ? 
+                'Vente déjà payée' : (
+                  // First check if it's a partial payment - the amount is less than the balance
+                  paymentAmount > 0 && paymentAmount < selectedSaleForPayment.balance ?
+                  'Effectuer un paiement partiel' : (
+                    // Then check if it's a credit payment - client balance is less than payment amount
+                    clientBalanceData && clientBalanceData.client.current_balance < paymentAmount ? 
+                    'Effectuer le paiement à crédit' : 'Effectuer le paiement total'
+                  )
+                )
+              )
+            )}
           </Button>
         </DialogActions>      
         </Dialog>

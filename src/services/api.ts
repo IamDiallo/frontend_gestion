@@ -1,11 +1,11 @@
 import axios, { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { Client } from '../interfaces/business';
 import { Product, ProductCategory, UnitOfMeasure } from '../interfaces/products';
-import { Sale, Invoice, Quote, OutstandingSale } from '../interfaces/sales';
+import { Sale, Invoice, Quote, OutstandingSale, SaleDeletionResponse, SaleCanDeleteResponse } from '../interfaces/sales';
 import { User, Group, UserCreateRequest } from '../interfaces/users';
 import { 
   Stock, StockSupply, StockTransfer, Inventory, StockMovement,
-  CreateStockSupply, CreateStockTransfer
+  CreateStockSupply, CreateStockTransfer, CreateInventory, UpdateInventory
 } from '../interfaces/inventory';
 import { 
   Account, Supplier, Zone 
@@ -740,7 +740,7 @@ export const InventoryAPI = {
     }
   },
 
-  createInventory: async (data: Inventory): Promise<Inventory> => {
+  createInventory: async (data: CreateInventory): Promise<Inventory> => {
     try {
       debugAPI.logRequest('/inventories/', 'POST', data);
       const response = await api.post('/inventories/', data);
@@ -780,7 +780,7 @@ export const InventoryAPI = {
     }
   },
 
-  updateInventory: async (id: number, data: Partial<Inventory>): Promise<Inventory> => {
+  updateInventory: async (id: number, data: UpdateInventory): Promise<Inventory> => {
     try {
       debugAPI.logRequest(`/inventories/${id}/`, 'PUT', data);
       const response = await api.put(`/inventories/${id}/`, data);
@@ -906,13 +906,25 @@ export const SalesAPI = {
     }
   },
   
-  delete: async (id: number): Promise<boolean> => {
+  delete: async (id: number): Promise<SaleDeletionResponse> => {
     try {
       debugAPI.logRequest(`/sales/${id}/`, 'DELETE');
-      await api.delete(`/sales/${id}/`);
-      return true;
+      const response = await api.delete(`/sales/${id}/`);
+      return response.data;
     } catch (error) {
       debugAPI.logError(`/sales/${id}/`, error);
+      throw error;
+    }
+  },
+
+  canDelete: async (id: number): Promise<SaleCanDeleteResponse> => {
+    try {
+      debugAPI.logRequest(`/sales/${id}/can_delete/`, 'GET');
+      const response = await api.get(`/sales/${id}/can_delete/`);
+      debugAPI.logResponse(`/sales/${id}/can_delete/`, response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError(`/sales/${id}/can_delete/`, error);
       throw error;
     }
   },
@@ -1059,8 +1071,8 @@ export const QuotesAPI = {
     return true;
   },
   
-  convertToSale: async (id: number): Promise<Sale> => {
-    const response = await api.post(`/quotes/${id}/convert_to_sale/`);
+  convertToSale: async (id: number, zone?: number): Promise<Sale> => {
+    const response = await api.post(`/quotes/${id}/convert_to_sale/`, { zone });
     return response.data;
   }
 };

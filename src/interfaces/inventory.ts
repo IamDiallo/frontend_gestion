@@ -129,7 +129,27 @@ export interface CreateStockTransfer {
   created_by?: number;
 }
 
-export type CreateInventory = Omit<Inventory, 'id' | 'reference'>;
+// Custom CreateInventory type that properly handles items
+export interface CreateInventory {
+  zone: number;
+  date: string;
+  status: 'draft' | 'in_progress' | 'completed' | 'cancelled';
+  notes?: string;
+  items?: CreateInventoryItem[];
+  created_by?: number;
+}
+
+// Custom UpdateInventory type that properly handles items for updates
+export interface UpdateInventory {
+  id?: number;
+  reference?: string;
+  zone: number;
+  date: string;
+  status: 'draft' | 'in_progress' | 'completed' | 'cancelled';
+  notes?: string;
+  items?: CreateInventoryItem[]; // Use CreateInventoryItem for updates too (without inventory field)
+  created_by?: number;
+}
 
 // Creation item types for completeness
 export type CreateStockSupplyItem = Omit<StockSupplyItem, 'id'>;

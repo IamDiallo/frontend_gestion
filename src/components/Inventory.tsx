@@ -45,12 +45,18 @@ import { DataGrid, GridRenderCellParams } from '@mui/x-data-grid';
 import {
   InventoryAPI, ZonesAPI, ProductsAPI, SuppliersAPI
 } from '../services/api';
-import { Stock, StockSupply, StockTransfer, Inventory as InventoryType, StockMovement } from '../interfaces/inventory';
+import { Stock, StockSupply, StockTransfer, Inventory as InventoryType, StockMovement, CreateInventory, UpdateInventory } from '../interfaces/inventory';
 import { Zone, Supplier } from '../interfaces/business'; // Import from business interfaces
 import { Product } from '../interfaces/products'; // Import Product from products interface
 import { usePermissions } from '../context/PermissionContext';
 import { Html5Qrcode } from 'html5-qrcode'; // Correct the import path
 import { AxiosError } from 'axios'; // Add AxiosError import for proper error handling
+import {
+  validateIntegerInput,
+  validateDecimalInput,
+  formatNumberDisplay,
+  getValidationError
+} from '../utils/inputValidation';
 
 // Tab panel component
 interface TabPanelProps {
@@ -119,9 +125,10 @@ const InventoryManagement: React.FC = () => {
   // New transfer dialog states and handlers
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [selectedTransfer, setSelectedTransfer] = useState<StockTransfer | null>(null);
-  const [transferItems, setTransferItems] = useState<{product: number, quantity: number}[]>([]);
+  const [transferItems, setTransferItems] = useState<{product: number, quantity: number, unit_price: number, total_price: number}[]>([]);
   const [currentTransferProduct, setCurrentTransferProduct] = useState<Product | null>(null);
   const [currentTransferQuantity, setCurrentTransferQuantity] = useState<number>(1);
+  const [currentTransferUnitPrice, setCurrentTransferUnitPrice] = useState<number>(0);
   const [sourceZone, setSourceZone] = useState<number | ''>('');
   const [targetZone, setTargetZone] = useState<number | ''>('');
   const [transferStatus, setTransferStatus] = useState<StockTransfer['status']>('pending');
@@ -129,9 +136,10 @@ const InventoryManagement: React.FC = () => {
   // New inventory count dialog states and handlers
   const [inventoryDialogOpen, setInventoryDialogOpen] = useState(false);
   const [selectedInventory, setSelectedInventory] = useState<InventoryType | null>(null);
-  const [inventoryItems, setInventoryItems] = useState<{product: number, quantity: number}[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<{product: number, quantity: number, unit_price: number, total_price: number}[]>([]);
   const [currentInventoryProduct, setCurrentInventoryProduct] = useState<Product | null>(null);
   const [currentInventoryQuantity, setCurrentInventoryQuantity] = useState<number>(1);
+  const [currentInventoryUnitPrice, setCurrentInventoryUnitPrice] = useState<number>(0);
   const [inventoryZone, setInventoryZone] = useState<number | ''>('');
   const [inventoryStatus, setInventoryStatus] = useState<InventoryType['status']>('draft');
 
@@ -152,7 +160,7 @@ const InventoryManagement: React.FC = () => {
   // Access user permissions
   const { hasPermission } = usePermissions();
 
-  // Add state for stock card filters
+  // State for Stock Cards filters
   const [selectedProductFilter, setSelectedProductFilter] = useState<number | ''>('');
   const [selectedZoneFilter, setSelectedZoneFilter] = useState<number | ''>('');
   const [inventorySearchTerm, setInventorySearchTerm] = useState('');
@@ -176,6 +184,15 @@ const InventoryManagement: React.FC = () => {
 
   // State for Historique (Stock Cards) filters
   const [stockCardSearchTerm, setStockCardSearchTerm] = useState(''); // New state for search
+
+  // Validation error states
+  const [scannedQuantityError, setScannedQuantityError] = useState<string>('');
+  const [supplyQuantityError, setSupplyQuantityError] = useState<string>('');
+  const [supplyPriceError, setSupplyPriceError] = useState<string>('');
+  const [transferQuantityError, setTransferQuantityError] = useState<string>('');
+  const [transferPriceError, setTransferPriceError] = useState<string>('');
+  const [inventoryQuantityError, setInventoryQuantityError] = useState<string>('');
+  const [inventoryPriceError, setInventoryPriceError] = useState<string>('');
 
 
   // Add this function definition
@@ -306,6 +323,9 @@ const InventoryManagement: React.FC = () => {
     setSelectedZone(selectedZone || zones[0]?.id || ''); // Default to current or first zone
     setSelectedSupply(null); // Ensure no supply is selected for creation
     setSupplyStatus('pending'); // Reset status to default for creation
+    // Reset error states
+    setSupplyQuantityError('');
+    setSupplyPriceError('');
     setSupplyDialogOpen(true);
   };
 
@@ -346,7 +366,7 @@ const InventoryManagement: React.FC = () => {
 
   const handleAddSupplyItem = () => {
     // Assuming currentSupplyUnitPrice is correctly set (either auto-filled or manually entered)
-    if (!currentSupplyProduct || currentSupplyQuantity <= 0 || currentSupplyUnitPrice < 0) {
+    if (!currentSupplyProduct || (currentSupplyQuantity ?? 0) <= 0 || (currentSupplyUnitPrice ?? 0) < 0) {
       setSnackbar({
         open: true,
         message: 'Veuillez sélectionner un produit, entrer une quantité valide (> 0) et un prix unitaire valide (>= 0).',
@@ -354,11 +374,11 @@ const InventoryManagement: React.FC = () => {
       });
       return;
     }
-    const totalPrice = currentSupplyQuantity * currentSupplyUnitPrice;
+    const totalPrice = (currentSupplyQuantity ?? 0) * (currentSupplyUnitPrice ?? 0);
     const newItem = {
       product: currentSupplyProduct.id,
-      quantity: currentSupplyQuantity,
-      unit_price: currentSupplyUnitPrice,
+      quantity: currentSupplyQuantity ?? 0,
+      unit_price: currentSupplyUnitPrice ?? 0,
       total_price: totalPrice
     };
 
@@ -379,6 +399,9 @@ const InventoryManagement: React.FC = () => {
     setCurrentSupplyProduct(null);
     setCurrentSupplyQuantity(1);
     setCurrentSupplyUnitPrice(0); // Reset unit price for the next selection
+    // Reset error states
+    setSupplyQuantityError('');
+    setSupplyPriceError('');
   };
 
   // New function to open scanner specifically for supplies
@@ -480,12 +503,16 @@ const InventoryManagement: React.FC = () => {
     setTransferItems([]);
     setCurrentTransferProduct(null);
     setCurrentTransferQuantity(1);
+    setCurrentTransferUnitPrice(0);
     setSourceZone(selectedZone || zones[0]?.id || '');
     // Set target zone to a different zone than source
     const otherZone = zones.find(z => z.id !== (selectedZone || zones[0]?.id))?.id || '';
     setTargetZone(otherZone);
     setSelectedTransfer(null);
     setTransferStatus('pending'); // Reset status on open
+    // Reset error states
+    setTransferQuantityError('');
+    setTransferPriceError('');
     setTransferDialogOpen(true);
   };
 
@@ -496,20 +523,28 @@ const InventoryManagement: React.FC = () => {
 
   const handleAddTransferItem = () => {
     if (!currentTransferProduct) return;
-    // Check if product already exists in the list
     const existingItemIndex = transferItems.findIndex(item => item.product === currentTransferProduct.id);
     if (existingItemIndex >= 0) {
-      // Update quantity if product already exists
       const updatedItems = [...transferItems];
-      updatedItems[existingItemIndex].quantity += currentTransferQuantity;
+      updatedItems[existingItemIndex].quantity += (currentTransferQuantity ?? 1);
+      updatedItems[existingItemIndex].unit_price = (currentTransferUnitPrice ?? 0);
+      updatedItems[existingItemIndex].total_price = updatedItems[existingItemIndex].quantity * (currentTransferUnitPrice ?? 0);
       setTransferItems(updatedItems);
     } else {
-      // Add new item
       setTransferItems([...transferItems, {
         product: currentTransferProduct.id,
-        quantity: currentTransferQuantity
+        quantity: currentTransferQuantity ?? 1,
+        unit_price: currentTransferUnitPrice ?? 0,
+        total_price: (currentTransferQuantity ?? 1) * (currentTransferUnitPrice ?? 0)
       }]);
     }
+    // Reset inputs for next item
+    setCurrentTransferProduct(null);
+    setCurrentTransferQuantity(1);
+    setCurrentTransferUnitPrice(0);
+    // Reset error states
+    setTransferQuantityError('');
+    setTransferPriceError('');
   };
 
   // New function to open scanner specifically for transfers
@@ -609,9 +644,13 @@ const InventoryManagement: React.FC = () => {
     setInventoryItems([]);
     setCurrentInventoryProduct(null);
     setCurrentInventoryQuantity(1);
+    setCurrentInventoryUnitPrice(0);
     setInventoryZone(selectedZone || zones[0]?.id || '');
     setSelectedInventory(null); // Ensure no inventory is selected for creation
     setInventoryStatus('draft'); // Reset status to default for creation
+    // Reset error states
+    setInventoryQuantityError('');
+    setInventoryPriceError('');
     setInventoryDialogOpen(true);
   };
 
@@ -622,20 +661,28 @@ const InventoryManagement: React.FC = () => {
 
   const handleAddInventoryItem = () => {
     if (!currentInventoryProduct) return;
-    // Check if product already exists in the lists)
     const existingItemIndex = inventoryItems.findIndex(item => item.product === currentInventoryProduct.id);
     if (existingItemIndex >= 0) {
-      // Update quantity if product already exists
       const updatedItems = [...inventoryItems];
-      updatedItems[existingItemIndex].quantity = currentInventoryQuantity; // Replace quantity for inventory counts
+      updatedItems[existingItemIndex].quantity = currentInventoryQuantity ?? 1;
+      updatedItems[existingItemIndex].unit_price = currentInventoryUnitPrice ?? 0;
+      updatedItems[existingItemIndex].total_price = (currentInventoryQuantity ?? 1) * (currentInventoryUnitPrice ?? 0);
       setInventoryItems(updatedItems);
     } else {
-      // Add new item
       setInventoryItems([...inventoryItems, {
         product: currentInventoryProduct.id,
-        quantity: currentInventoryQuantity
+        quantity: currentInventoryQuantity ?? 1,
+        unit_price: currentInventoryUnitPrice ?? 0,
+        total_price: (currentInventoryQuantity ?? 1) * (currentInventoryUnitPrice ?? 0)
       }]);
     }
+    // Reset inputs for next item
+    setCurrentInventoryProduct(null);
+    setCurrentInventoryQuantity(1);
+    setCurrentInventoryUnitPrice(0);
+    // Reset error states
+    setInventoryQuantityError('');
+    setInventoryPriceError('');
   };
 
   // New function to open scanner specifically for inventories
@@ -664,22 +711,23 @@ const InventoryManagement: React.FC = () => {
       setLoading(true);
       
       if (selectedInventory) {// Update existing inventory
-        // When updating, don't include the original items to prevent doubling
-        const updatedInventory = await InventoryAPI.updateInventory(selectedInventory.id!, {
-          // Only include essential fields, not the original items
+        // When updating, don't include the inventory field in items to prevent conflicts
+        const updateData: UpdateInventory = {
           id: selectedInventory.id,
           reference: selectedInventory.reference, 
           date: selectedInventory.date,
-          zone: inventoryZone,
+          zone: inventoryZone as number,
           status: inventoryStatus,
           items: inventoryItems.map(item => ({ 
             product: item.product, 
             actual_quantity: item.quantity,
             expected_quantity: 0, // Default value
-            difference: 0, // Will be calculated
-            inventory: selectedInventory.id // Set inventory ID for existing items
+            difference: 0 // Will be calculated
+            // Don't include inventory field - backend will set it automatically
           }))
-        });
+        };
+        
+        const updatedInventory = await InventoryAPI.updateInventory(selectedInventory.id!, updateData);
         
         setInventories(inventories.map(i => i.id === selectedInventory.id ? updatedInventory : i));
         console.log("Inventory updated with items:", inventoryItems);
@@ -691,7 +739,7 @@ const InventoryManagement: React.FC = () => {
         // Create new inventory count - let the backend generate the reference
         const today = new Date();
         const date = today.toISOString().split('T')[0]; // YYYY-MM-DD format
-        const newInventory: Omit<InventoryType, 'id' | 'reference'> = {
+        const newInventory: CreateInventory = {
           zone: inventoryZone as number,
           date: date,
           status: inventoryStatus,
@@ -699,8 +747,8 @@ const InventoryManagement: React.FC = () => {
             product: item.product, 
             actual_quantity: item.quantity,
             expected_quantity: 0, // Default value, will be set by backend
-            difference: 0, // Will be calculated by backend
-            inventory: 0 // Will be set by backend when creating
+            difference: 0 // Will be calculated by backend
+            // Don't include inventory field for new items - backend will set it
           }))
         };
         // API call to create new inventory count
@@ -907,7 +955,7 @@ const InventoryManagement: React.FC = () => {
     // For now, let's add with a default price of 0 and let the user edit.
     const newItem = {
       product: product.id,
-      quantity: scannedQuantity,
+      quantity: scannedQuantity ?? 1,
       unit_price: 0, // Default or fetch price later
       total_price: 0 // Default or fetch price later
     };
@@ -916,7 +964,7 @@ const InventoryManagement: React.FC = () => {
     if (existingItemIndex >= 0) {
       // Update quantity if product already exists
       const updatedItems = [...supplyItems];
-      updatedItems[existingItemIndex].quantity += scannedQuantity;
+      updatedItems[existingItemIndex].quantity += (scannedQuantity ?? 1);
       setSupplyItems(updatedItems);
     } else {
       // Add new item
@@ -925,7 +973,7 @@ const InventoryManagement: React.FC = () => {
     // Show success message
     setSnackbar({
       open: true,
-      message: `Added ${scannedQuantity} units of ${product.name} to the supply`,
+      message: `Added ${scannedQuantity ?? 1} units of ${product.name} to the supply`,
       severity: 'success'
     });
     // Reset scanned quantity for next scan
@@ -936,17 +984,21 @@ const InventoryManagement: React.FC = () => {
   // Function to add a scanned product to the current transfer
   const handleAddScannedProductToTransfer = (product: Product) => {
     if (!product) return;
-    // Create a transfer item with the scanned product
+    // Create a transfer item with the scanned product including pricing defaults
     const newItem = {
       product: product.id,
-      quantity: scannedQuantity
+      quantity: scannedQuantity ?? 1,
+      unit_price: 0,
+      total_price: 0
     };
     // Check if product already exists in the transfer items
     const existingItemIndex = transferItems.findIndex(item => item.product === product.id);
     if (existingItemIndex >= 0) {
       // Update quantity if product already exists
       const updatedItems = [...transferItems];
-      updatedItems[existingItemIndex].quantity += scannedQuantity;
+      updatedItems[existingItemIndex].quantity += (scannedQuantity ?? 1);
+      // Keep unit_price and recalc total price
+      updatedItems[existingItemIndex].total_price = updatedItems[existingItemIndex].quantity * updatedItems[existingItemIndex].unit_price;
       setTransferItems(updatedItems);
     } else {
       // Add new item
@@ -955,7 +1007,7 @@ const InventoryManagement: React.FC = () => {
     // Show success message
     setSnackbar({
       open: true,
-      message: `Added ${scannedQuantity} units of ${product.name} to the transfer`,
+      message: `Added ${scannedQuantity ?? 1} units of ${product.name} to the transfer`,
       severity: 'success'
     });
     // Reset scanned quantity for next scan
@@ -966,17 +1018,20 @@ const InventoryManagement: React.FC = () => {
   // Function to add a scanned product to the current inventory
   const handleAddScannedProductToInventory = (product: Product) => {
     if (!product) return;
-    // Create an inventory item with the scanned product
+    // Create an inventory item with the scanned product including pricing defaults
     const newItem = {
       product: product.id,
-      quantity: scannedQuantity
+      quantity: scannedQuantity ?? 1,
+      unit_price: 0,
+      total_price: 0
     };
     // Check if product already exists in the inventory items
     const existingItemIndex = inventoryItems.findIndex(item => item.product === product.id);
     if (existingItemIndex >= 0) {
       // Update quantity if product already exists
       const updatedItems = [...inventoryItems];
-      updatedItems[existingItemIndex].quantity = scannedQuantity; // Replace quantity for inventory counts
+      updatedItems[existingItemIndex].quantity = (scannedQuantity ?? 1); // Replace quantity
+      updatedItems[existingItemIndex].total_price = (scannedQuantity ?? 1) * updatedItems[existingItemIndex].unit_price;
       setInventoryItems(updatedItems);
     } else {
       // Add new item
@@ -985,7 +1040,7 @@ const InventoryManagement: React.FC = () => {
     // Show success message
     setSnackbar({
       open: true,
-      message: `Counted ${scannedQuantity} units of ${product.name}`,
+      message: `Counted ${scannedQuantity ?? 1} units of ${product.name}`,
       severity: 'success'
     });
     // Reset scanned quantity for next scan
@@ -1081,11 +1136,21 @@ const InventoryManagement: React.FC = () => {
       setLoading(true);
       const transferDetails = await InventoryAPI.getStockTransfer(transferId);
       setSelectedTransfer(transferDetails);
-      // Set form state from transfer details
+      // Set form state
       setSourceZone(transferDetails.from_zone);
       setTargetZone(transferDetails.to_zone);
       setTransferStatus(transferDetails.status);
-      setTransferItems(transferDetails.items || []);
+      setTransferItems((transferDetails.items || []).map(item => {
+        // Use product purchase price if available
+        const prod = products.find(p => p.id === item.product);
+        const price = prod?.purchase_price ?? 0;
+        return {
+          product: item.product,
+          quantity: item.quantity,
+          unit_price: price,
+          total_price: price * item.quantity
+        };
+      }));
       setTransferDialogOpen(true);
     } catch (err) {
       console.error('Error fetching transfer details:', err);
@@ -1104,17 +1169,19 @@ const InventoryManagement: React.FC = () => {
       setLoading(true);
       const inventoryDetails = await InventoryAPI.getInventory(inventoryId);
       setSelectedInventory(inventoryDetails);
-      // Set form state from inventory details
       setInventoryZone(inventoryDetails.zone);
       setInventoryStatus(inventoryDetails.status);
-        // Map backend items to frontend format
-      // Handle both possible property names (actual_quantity or counted_quantity)
-      setInventoryItems((inventoryDetails.items || []).map(item => ({
-        product: item.product,
-        quantity: item.actual_quantity !== undefined ? item.actual_quantity : 0
-      })));
-      
-      console.log("Inventory items loaded:", inventoryDetails.items);
+      setInventoryItems((inventoryDetails.items || []).map(item => {
+        const prod = products.find(p => p.id === item.product);
+        const price = prod?.purchase_price ?? 0;
+        const qty = item.actual_quantity ?? 0;
+        return {
+          product: item.product,
+          quantity: qty,
+          unit_price: price,
+          total_price: price * qty
+        };
+      }));
       setInventoryDialogOpen(true);
     } catch (err) {
       console.error('Error fetching inventory details:', err);
@@ -1339,7 +1406,7 @@ const InventoryManagement: React.FC = () => {
             </Button>
           </Box>
         </Box>
-        <Box sx={{ height: 400, width: '100%' }}>
+        <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>
           <DataGrid
             rows={filteredStocks} // Use filtered data
             getRowId={(row) => row.id || Math.random()}
@@ -1397,22 +1464,22 @@ const InventoryManagement: React.FC = () => {
             pageSizeOptions={[5, 10, 25]}
             checkboxSelection={false}
             disableRowSelectionOnClick
+            loading={loading}
             sx={{
-              '& .MuiDataGrid-cell:focus': {
-                outline: 'none',
-              },
-              '& .MuiDataGrid-cell:focus-within': {
-                outline: 'none',
-              },
-              '& .MuiDataGrid-columnHeader:focus': {
-                outline: 'none',
-              },
-              boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
               border: 'none',
-              borderRadius: 2,
               '& .MuiDataGrid-columnHeaders': {
-                backgroundColor: 'rgba(0, 0, 0, 0.02)',
-                borderRadius: '8px 8px 0 0',
+                backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
+                color: theme => theme.palette.text.primary,
+                fontWeight: 'bold'
+              },
+              '& .MuiDataGrid-cell': {
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                fontSize: '0.875rem'
+              },
+              '& .MuiDataGrid-row:hover': {
+                backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
+                cursor: 'pointer'
               }
             }}
           />
@@ -1519,7 +1586,7 @@ const InventoryManagement: React.FC = () => {
         ) : error ? (
           <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
         ) : (
-          <Box sx={{ height: 400, width: '100%' }}>
+          <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>
             <DataGrid
               rows={filteredSupplies} // Use filtered data
               getRowId={(row) => row.id || Math.random()}
@@ -1604,22 +1671,22 @@ const InventoryManagement: React.FC = () => {
               pageSizeOptions={[5, 10, 25]}
               checkboxSelection={false}
               disableRowSelectionOnClick
+              loading={loading}
               sx={{
-                '& .MuiDataGrid-cell:focus': {
-                  outline: 'none',
-                },
-                '& .MuiDataGrid-cell:focus-within': {
-                  outline: 'none',
-                },
-                '& .MuiDataGrid-columnHeader:focus': {
-                  outline: 'none',
-                },
-                boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
                 border: 'none',
-                borderRadius: 2,
                 '& .MuiDataGrid-columnHeaders': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
-                  borderRadius: '8px 8px 0 0',
+                  backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
+                  color: theme => theme.palette.text.primary,
+                  fontWeight: 'bold'
+                },
+                '& .MuiDataGrid-cell': {
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  fontSize: '0.875rem'
+                },
+                '& .MuiDataGrid-row:hover': {
+                  backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
+                  cursor: 'pointer'
                 }
               }}
             />
@@ -1727,7 +1794,7 @@ const InventoryManagement: React.FC = () => {
         ) : error ? (
           <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
         ) : (
-          <Box sx={{ height: 400, width: '100%' }}>
+          <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>
             <DataGrid
               rows={filteredTransfers} // Use filtered data
               getRowId={(row) => row.id || Math.random()}
@@ -1813,22 +1880,22 @@ const InventoryManagement: React.FC = () => {
               pageSizeOptions={[5, 10, 25]}
               checkboxSelection={false}
               disableRowSelectionOnClick
+              loading={loading}
               sx={{
-                '& .MuiDataGrid-cell:focus': {
-                  outline: 'none',
-                },
-                '& .MuiDataGrid-cell:focus-within': {
-                  outline: 'none',
-                },
-                '& .MuiDataGrid-columnHeader:focus': {
-                  outline: 'none',
-                },
-                boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
                 border: 'none',
-                borderRadius: 2,
                 '& .MuiDataGrid-columnHeaders': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
-                  borderRadius: '8px 8px 0 0',
+                  backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
+                  color: theme => theme.palette.text.primary,
+                  fontWeight: 'bold'
+                },
+                '& .MuiDataGrid-cell': {
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  fontSize: '0.875rem'
+                },
+                '& .MuiDataGrid-row:hover': {
+                  backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
+                  cursor: 'pointer'
                 }
               }}
             />
@@ -1930,7 +1997,7 @@ const InventoryManagement: React.FC = () => {
         ) : error ? (
           <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
         ) : (
-          <Box sx={{ height: 400, width: '100%' }}>
+          <Box sx={{ height: 500, width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'hidden', bgcolor: 'background.paper' }}>
             <DataGrid
               rows={filteredInventories} // Use filtered data
               getRowId={(row) => row.id || Math.random()}
@@ -2008,22 +2075,22 @@ const InventoryManagement: React.FC = () => {
               pageSizeOptions={[5, 10, 25]}
               checkboxSelection={false}
               disableRowSelectionOnClick
+              loading={loading}
               sx={{
-                '& .MuiDataGrid-cell:focus': {
-                  outline: 'none',
-                },
-                '& .MuiDataGrid-cell:focus-within': {
-                  outline: 'none',
-                },
-                '& .MuiDataGrid-columnHeader:focus': {
-                  outline: 'none',
-                },
-                boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
                 border: 'none',
-                borderRadius: 2,
                 '& .MuiDataGrid-columnHeaders': {
-                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
-                  borderRadius: '8px 8px 0 0',
+                  backgroundColor: theme => theme.palette.mode === 'dark' ? 'background.paper' : 'primary.lighter',
+                  color: theme => theme.palette.text.primary,
+                  fontWeight: 'bold'
+                },
+                '& .MuiDataGrid-cell': {
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  fontSize: '0.875rem'
+                },
+                '& .MuiDataGrid-row:hover': {
+                  backgroundColor: theme => theme.palette.mode === 'dark' ? 'action.hover' : 'primary.lightest',
+                  cursor: 'pointer'
                 }
               }}
             />
@@ -2326,14 +2393,17 @@ const InventoryManagement: React.FC = () => {
                 <Box sx={{ mt: 2 }}>
                   <TextField
                     label="Quantité"
-                    type="number"
-                    value={scannedQuantity}
-                    onChange={(e) => setScannedQuantity(Number(e.target.value))}
-                    fullWidth
-                    InputProps={{
-                      inputProps: { min: 1 }
+                    type="text"
+                    value={formatNumberDisplay(scannedQuantity)}
+                    onChange={(e) => {
+                      const validatedValue = validateIntegerInput(e.target.value, scannedQuantity);
+                      setScannedQuantity(validatedValue);
+                      setScannedQuantityError(getValidationError(validatedValue, 'quantity'));
                     }}
+                    fullWidth
                     size="small"
+                    error={!!scannedQuantityError}
+                    helperText={scannedQuantityError || "Quantité pour l'opération"}
                   />
                 </Box>
               )}
@@ -2454,11 +2524,9 @@ const InventoryManagement: React.FC = () => {
                     onChange={(e) => {
                       const productId = e.target.value as number;
                       const product = products.find(p => p.id === productId);
-                      setCurrentSupplyProduct(product || null);                      let priceToSet = 0; // Default to 0
-                      if (product) {
-                        priceToSet = parseFloat(String(product.purchase_price)) || 0; // Convert to string first
-                      }
-                      setCurrentSupplyUnitPrice(priceToSet);
+                      setCurrentSupplyProduct(product || null);
+                      // Auto-fill unit price from product purchase price
+                      setCurrentSupplyUnitPrice(product?.purchase_price ?? 0);
                     }}
                     label="Produit"
                   >
@@ -2474,30 +2542,36 @@ const InventoryManagement: React.FC = () => {
                 </FormControl>
                 <TextField
                   label="Quantité"
-                  type="number"
-                  value={currentSupplyQuantity}
-                  onChange={(e) => setCurrentSupplyQuantity(Number(e.target.value))}
-                  InputProps={{
-                    inputProps: { min: 1 }
+                  type="text"
+                  value={formatNumberDisplay(currentSupplyQuantity)}
+                  onChange={(e) => {
+                    const validatedValue = validateIntegerInput(e.target.value, currentSupplyQuantity);
+                    setCurrentSupplyQuantity(validatedValue);
+                    setSupplyQuantityError(getValidationError(validatedValue, 'quantity'));
                   }}
                   sx={{ width: 120 }}
+                  error={!!supplyQuantityError}
+                  helperText={supplyQuantityError}
                 />
                 {/* Unit Price Field - Value is now managed by state, potentially auto-filled */}
                 <TextField
                   label="Prix Unitaire"
-                  type="number"
-                  value={currentSupplyUnitPrice} // Value comes from state
-                  onChange={(e) => setCurrentSupplyUnitPrice(Number(e.target.value))} // Allow manual override
-                  InputProps={{
-                    inputProps: { min: 0, step: "0.01" }
+                  type="text"
+                  value={formatNumberDisplay(currentSupplyUnitPrice)}
+                  onChange={(e) => {
+                    const validatedValue = validateDecimalInput(e.target.value, currentSupplyUnitPrice);
+                    setCurrentSupplyUnitPrice(validatedValue);
+                    setSupplyPriceError(getValidationError(validatedValue, 'price'));
                   }}
                   sx={{ width: 120 }}
+                  error={!!supplyPriceError}
+                  helperText={supplyPriceError}
                 />
                 <Button
                   variant="contained"
                   color="primary"
                   onClick={handleAddSupplyItem}
-                  disabled={!currentSupplyProduct || currentSupplyQuantity <= 0 || currentSupplyUnitPrice < 0}
+                  disabled={!currentSupplyProduct || (currentSupplyQuantity ?? 0) <= 0 || (currentSupplyUnitPrice ?? 0) < 0 || !!supplyQuantityError || !!supplyPriceError}
                   sx={{ alignSelf: 'flex-end' }}
                 >
                   Ajouter
@@ -2638,6 +2712,8 @@ const InventoryManagement: React.FC = () => {
                       const productId = e.target.value as number;
                       const product = products.find(p => p.id === productId);
                       setCurrentTransferProduct(product || null);
+                      // Auto-fill unit price from product purchase price
+                      setCurrentTransferUnitPrice(product?.purchase_price ?? 0);
                     }}
                     label="Produit"
                   >
@@ -2653,19 +2729,35 @@ const InventoryManagement: React.FC = () => {
                 </FormControl>
                 <TextField
                   label="Quantité"
-                  type="number"
-                  value={currentTransferQuantity}
-                  onChange={(e) => setCurrentTransferQuantity(Number(e.target.value))}
-                  InputProps={{
-                    inputProps: { min: 1 }
+                  type="text"
+                  value={formatNumberDisplay(currentTransferQuantity)}
+                  onChange={(e) => {
+                    const validatedValue = validateIntegerInput(e.target.value, currentTransferQuantity);
+                    setCurrentTransferQuantity(validatedValue);
+                    setTransferQuantityError(getValidationError(validatedValue, 'quantity'));
                   }}
                   sx={{ width: 120 }}
+                  error={!!transferQuantityError}
+                  helperText={transferQuantityError}
+                />
+                <TextField
+                  label="Prix Unitaire"
+                  type="text"
+                  value={formatNumberDisplay(currentTransferUnitPrice)}
+                  onChange={(e) => {
+                    const validatedValue = validateDecimalInput(e.target.value, currentTransferUnitPrice);
+                    setCurrentTransferUnitPrice(validatedValue);
+                    setTransferPriceError(getValidationError(validatedValue, 'price'));
+                  }}
+                  sx={{ width: 120 }}
+                  error={!!transferPriceError}
+                  helperText={transferPriceError}
                 />
                 <Button
                   variant="contained"
                   color="primary"
                   onClick={handleAddTransferItem}
-                  disabled={!currentTransferProduct}
+                  disabled={!currentTransferProduct || !!transferQuantityError || !!transferPriceError}
                 >
                   Ajouter
                 </Button>
@@ -2677,6 +2769,8 @@ const InventoryManagement: React.FC = () => {
                       <TableRow>
                         <TableCell>Produit</TableCell>
                         <TableCell align="right">Quantité</TableCell>
+                        <TableCell align="right">Prix Unitaire</TableCell>
+                        <TableCell align="right">Prix Total</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
                     </TableHead>
@@ -2685,6 +2779,8 @@ const InventoryManagement: React.FC = () => {
                         <TableRow key={index}>
                           <TableCell>{getProductName(item.product)}</TableCell>
                           <TableCell align="right">{item.quantity}</TableCell>
+                          <TableCell align="right">{item.unit_price}</TableCell>
+                          <TableCell align="right">{item.total_price}</TableCell>
                           <TableCell align="right">
                             <IconButton size="small" color="error" onClick={() => handleRemoveTransferItem(index)}>
                               <DeleteIcon fontSize="small" />
@@ -2781,6 +2877,8 @@ const InventoryManagement: React.FC = () => {
                       const productId = e.target.value as number;
                       const product = products.find(p => p.id === productId);
                       setCurrentInventoryProduct(product || null);
+                      // Auto-fill unit price for inventory from product purchase price
+                      setCurrentInventoryUnitPrice(product?.purchase_price ?? 0);
                     }}
                     label="Produit"
                   >
@@ -2796,17 +2894,35 @@ const InventoryManagement: React.FC = () => {
                 </FormControl>
                 <TextField
                   label="Quantité"
-                  type="number"
-                  value={currentInventoryQuantity}
-                  onChange={(e) => setCurrentInventoryQuantity(Number(e.target.value))}
-                  InputProps={{ inputProps: { min: 0 } }}
+                  type="text"
+                  value={formatNumberDisplay(currentInventoryQuantity)}
+                  onChange={(e) => {
+                    const validatedValue = validateIntegerInput(e.target.value, currentInventoryQuantity);
+                    setCurrentInventoryQuantity(validatedValue);
+                    setInventoryQuantityError(getValidationError(validatedValue, 'quantity'));
+                  }}
                   sx={{ width: 120 }}
+                  error={!!inventoryQuantityError}
+                  helperText={inventoryQuantityError}
+                />
+                <TextField
+                  label="Prix Unitaire"
+                  type="text"
+                  value={formatNumberDisplay(currentInventoryUnitPrice)}
+                  onChange={(e) => {
+                    const validatedValue = validateDecimalInput(e.target.value, currentInventoryUnitPrice);
+                    setCurrentInventoryUnitPrice(validatedValue);
+                    setInventoryPriceError(getValidationError(validatedValue, 'price'));
+                  }}
+                  sx={{ width: 120 }}
+                  error={!!inventoryPriceError}
+                  helperText={inventoryPriceError}
                 />
                 <Button
                   variant="contained"
                   color="primary"
                   onClick={handleAddInventoryItem}
-                  disabled={!currentInventoryProduct}
+                  disabled={!currentInventoryProduct || !!inventoryQuantityError || !!inventoryPriceError}
                 >
                   Ajouter
                 </Button>
@@ -2818,6 +2934,8 @@ const InventoryManagement: React.FC = () => {
                       <TableRow>
                         <TableCell>Produit</TableCell>
                         <TableCell align="right">Quantité comptée</TableCell>
+                        <TableCell align="right">Prix Unitaire</TableCell>
+                        <TableCell align="right">Prix Total</TableCell>
                         <TableCell align="right">Actions</TableCell>
                       </TableRow>
                     </TableHead>
@@ -2826,6 +2944,8 @@ const InventoryManagement: React.FC = () => {
                         <TableRow key={index}>
                           <TableCell>{getProductName(item.product)}</TableCell>
                           <TableCell align="right">{item.quantity}</TableCell>
+                          <TableCell align="right">{item.unit_price}</TableCell>
+                          <TableCell align="right">{item.total_price}</TableCell>
                           <TableCell align="right">
                             <IconButton size="small" color="error" onClick={() => handleRemoveInventoryItem(index)}>
                               <DeleteIcon fontSize="small" />
