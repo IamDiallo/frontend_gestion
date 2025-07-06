@@ -514,6 +514,15 @@ const Products = () => {
                   }
                 },
                 { 
+                  field: 'min_stock_level', 
+                  headerName: 'Stock Min.', 
+                  flex: 1,
+                  valueGetter: (value, row) => {
+                    if (!row || row.min_stock_level === undefined) return '0';
+                    return row.min_stock_level.toString();
+                  }
+                },
+                { 
                   field: 'is_raw_material', 
                   headerName: 'Type', 
                   flex: 1,
@@ -870,8 +879,9 @@ const Products = () => {
                     onChange={(e) => {
                       const newValue = validateDecimalInput(e.target.value, editingProduct.purchase_price);
                       setEditingProduct({...editingProduct, purchase_price: newValue});
-                    }}                  error={(editingProduct.purchase_price ?? 0) < 0}
-                  helperText={getValidationError(editingProduct.purchase_price, 'price')}
+                    }}
+                    error={(editingProduct.purchase_price ?? 0) < 0}
+                    helperText={getValidationError(editingProduct.purchase_price, 'price')}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -883,8 +893,9 @@ const Products = () => {
                     onChange={(e) => {
                       const newValue = validateDecimalInput(e.target.value, editingProduct.selling_price);
                       setEditingProduct({...editingProduct, selling_price: newValue});
-                    }}                  error={(editingProduct.selling_price ?? 0) < 0}
-                  helperText={getValidationError(editingProduct.selling_price, 'price')}
+                    }}
+                    error={(editingProduct.selling_price ?? 0) < 0}
+                    helperText={getValidationError(editingProduct.selling_price, 'price')}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}> {/* Add Grid item for min_stock_level */}
@@ -894,10 +905,11 @@ const Products = () => {
                     type="text"
                     value={formatNumberDisplay(editingProduct.min_stock_level)}
                     onChange={(e) => {
-                      const newValue = validateIntegerInput(e.target.value, editingProduct.min_stock_level);
+                      const newValue = validateDecimalInput(e.target.value, editingProduct.min_stock_level);
                       setEditingProduct({...editingProduct, min_stock_level: newValue});
-                    }}                  error={(editingProduct.min_stock_level ?? 0) < 0}
-                  helperText={getValidationError(editingProduct.min_stock_level, 'stock')}
+                    }}
+                    error={(editingProduct.min_stock_level ?? 0) < 0}
+                    helperText={getValidationError(editingProduct.min_stock_level, 'stock')}
                   />
                 </Grid>
                 <Grid item xs={6}>

@@ -1943,7 +1943,7 @@ const Treasury = () => {
                   }}
                   renderInput={(params) => (
                     <TextField {...params}
-                      label="Compte de caisse"
+                      label="Compte du client"
                       variant="outlined"
                       fullWidth
                       required

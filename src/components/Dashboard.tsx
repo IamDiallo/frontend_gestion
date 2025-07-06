@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -29,7 +29,9 @@ import {
   LinearProgress,
   Tooltip
 } from '@mui/material';
+import { DashboardAPI, ClientsAPI } from '../services/api';
 import { DataGrid } from '@mui/x-data-grid';
+import StandardDataGrid from './common/StandardDataGrid';
 import {
   Assessment,
   CalendarToday,
@@ -60,10 +62,8 @@ import {
   AreaChart, 
   Area
 } from 'recharts';
-import axios from 'axios';
 import { useTheme } from '@mui/material/styles';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
 interface SalesData {
@@ -108,9 +108,20 @@ interface LowStockProduct {
   unit: string;
 }
 
+interface ProductStockValue {
+  product_id: number;
+  product_name: string;
+  zone_name: string;
+  quantity: number;
+  unit_price: number;
+  stock_value: number;
+  unit_symbol: string;
+}
+
 interface InventoryStats {
   inventory_value: number;
   low_stock_products: LowStockProduct[];
+  product_stock_values: ProductStockValue[];
   inflow: number;
   outflow: number;
   category_data: { category: string; value: number; }[];
@@ -140,6 +151,10 @@ interface AccountStatement {
 }
 
 // TabPanel component for tabbed navigation
+
+interface ApiResponse<T> {
+  results?: T[];
+}
 
 // Add type definitions for API responses
 interface CategoryDataItem {
@@ -185,6 +200,11 @@ const Dashboard = () => {
   const [salesTrendData, setSalesTrendData] = useState<SalesData[]>([]);
   const [inventoryValueTrend, setInventoryValueTrend] = useState<{name: string; value: number}[]>([]);
 
+  // State for stock value filtering
+  const [zoneFilter, setZoneFilter] = useState<string>('');
+  const [productNameFilter, setProductNameFilter] = useState<string>('');
+  const [stockValuePagination, setStockValuePagination] = useState({ page: 0, pageSize: 10 });
+
   // Helper function to generate placeholder trend data when API doesn't provide it
   const generateInventoryTrendData = (currentValue: number) => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -202,27 +222,53 @@ const Dashboard = () => {
     });
   };
 
-  const fetchInventoryStats = useCallback(async () => {
+  // Create stable versions of the fetch functions that don't change on every render
+  const fetchDashboardStatsStable = useCallback(async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        throw new Error('Authentication token not found');
-      }
+      const data = await DashboardAPI.getStats(period, startDate, endDate);
+      setDashboardStats(data);
+    } catch (err) {
+      console.error('Error fetching dashboard stats:', err);
+      throw err;
+    }
+  }, [period, startDate, endDate]);
+
+  const fetchSalesReportStable = useCallback(async () => {
+    try {
+      const response = await DashboardAPI.getSalesReport(period, startDate, endDate);
       
-      const response = await axios.get(`${API_URL}/dashboard/inventory/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const transformedData = {
+        ...response,
+        category_data: (response as SalesResponseData).category_data.map((item: CategoryDataItem) => ({
+          name: item.category,
+          value: item.amount
+        }))
+      };
       
-      setInventoryStats(response.data);
+      setReportData(transformedData);
+      setSalesTrendData(response.monthly_data);
+    } catch (err) {
+      console.error('Error fetching sales report:', err);
+      throw err;
+    }
+  }, [period, startDate, endDate]);
+
+  const fetchInventoryStatsStable = useCallback(async () => {
+    try {
+      const data = await DashboardAPI.getInventoryStats(period, startDate, endDate);
+      setInventoryStats(data);
+      
+      // Debug logging
+      console.log('Inventory Stats received:', data);
+      console.log('Product stock values:', data.product_stock_values);
+      console.log('Zone data:', data.zone_data);
       
       // If the API response includes historical inventory value data, use it
-      if (response.data && response.data.historical_value) {
-        setInventoryValueTrend(response.data.historical_value);
+      if (data && data.historical_value) {
+        setInventoryValueTrend(data.historical_value);
       } else {
         // Generate placeholder data based on current inventory value
-        const currentValue = response.data?.inventory_value || 0;
+        const currentValue = data?.inventory_value || 0;
         const placeholderData = generateInventoryTrendData(currentValue);
         setInventoryValueTrend(placeholderData);
       }
@@ -230,123 +276,39 @@ const Dashboard = () => {
       console.error('Error fetching inventory stats:', err);
       throw err;
     }
-  }, []);
-
-  const fetchSalesReport = useCallback(async () => {
+  }, [period, startDate, endDate]);
+  const fetchRecentSales = useCallback(async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        throw new Error('Authentication token not found');
-      }
-      
-      const url = `${API_URL}/reports/sales/`;
-      
-      const params = new URLSearchParams();
-      params.append('period', period);
-      
-      if (period === 'custom') {
-        params.append('start_date', startDate);
-        params.append('end_date', endDate);
-      }
-      
-      const response = await axios.get(`${url}?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-        const transformedData = {
-        ...response.data,
-        category_data: (response.data as SalesResponseData).category_data.map((item: CategoryDataItem) => ({
-          name: item.category,
-          value: item.amount
-        }))
-      };
-      
-      setReportData(transformedData);
-      setSalesTrendData(response.data.monthly_data);
-    } catch (err) {
-      console.error('Error fetching sales report:', err);
-      throw err;
-    }  }, [period, startDate, endDate]);
-
-  const fetchDashboardStats = async () => {
-    try {
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        throw new Error('Authentication token not found');
-      }
-      
-      const response = await axios.get(`${API_URL}/dashboard/stats/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      setDashboardStats(response.data);
-    } catch (err) {
-      console.error('Error fetching dashboard stats:', err);
-      throw err;
-    }
-  };
-  const fetchRecentSales = async () => {
-    try {
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        throw new Error('Authentication token not found');
-      }
-      
-      const response = await axios.get(`${API_URL}/dashboard/recent-sales/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
+      const data = await DashboardAPI.getRecentSales();
       // Recent sales data is no longer needed as we removed the state
-      console.log('Recent sales data:', response.data);
+      console.log('Recent sales data:', data);
     } catch (err) {
       console.error('Error fetching recent sales:', err);
       throw err;
     }
-  };
+  }, []);
 
-  const fetchLowStockProducts = async () => {
+  const fetchLowStockProducts = useCallback(async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        throw new Error('Authentication token not found');
-      }
-      
-      const response = await axios.get(`${API_URL}/dashboard/low-stock/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      setLowStockProducts(response.data);
+      const data = await DashboardAPI.getLowStockProducts();
+      setLowStockProducts(data);
     } catch (err) {
       console.error('Error fetching low stock products:', err);
       throw err;
-    }  };
+    }
+  }, []);
 
-  const fetchClientAccountStatements = async () => {
+  const fetchClientAccountStatements = useCallback(async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      if (!token) {
-        throw new Error('Authentication token not found');
-      }
       // First, get all clients with their balances
-      const clientsResponse = await axios.get(`${API_URL}/clients/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const clientsData = await ClientsAPI.getAll();
       
       // Log the response to help with debugging
-      console.log('Clients API Response:', clientsResponse.data);
+      console.log('Clients API Response:', clientsData);
       
       // Ensure data is an array before filtering
-      const responseData = Array.isArray(clientsResponse.data) ? clientsResponse.data : 
-                          (clientsResponse.data.results ? clientsResponse.data.results : []);
+      const responseData = Array.isArray(clientsData) ? clientsData : 
+                          ((clientsData as ApiResponse<ClientResponseItem>).results ? (clientsData as ApiResponse<ClientResponseItem>).results : []);
       console.log('Processed response data:', responseData);
       
       const clientsWithAccounts = (responseData as ClientResponseItem[]).filter((client: ClientResponseItem) => client.account !== null);
@@ -355,16 +317,12 @@ const Dashboard = () => {
       if (clientsWithAccounts.length > 0) {
         const clientId = clientsWithAccounts[0].id;
         try {
-          const statementsResponse = await axios.get(`${API_URL}/account-statements/client_balance/?client_id=${clientId}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          });
+          const statementsData = await DashboardAPI.getClientAccountStatements(clientId);
           
           // Check if the response has statements property or is an array itself
-          const statements = statementsResponse.data.statements 
-            ? statementsResponse.data.statements 
-            : (Array.isArray(statementsResponse.data) ? statementsResponse.data : []);
+          const statements = statementsData.statements 
+            ? statementsData.statements 
+            : (Array.isArray(statementsData) ? statementsData : []);
             
           setAccountStatements(statements);
         } catch (statementError) {
@@ -382,21 +340,19 @@ const Dashboard = () => {
       setClientBalances([]);
       setAccountStatements([]);
     }
-  };
+  }, []);
   const loadDashboardData = useCallback(async () => {
     setLoading(true);
     setError(null);
     
     try {
-      // Only fetch dashboard stats if we don't have them yet
-      if (dashboardStats === null) {
-        await fetchDashboardStats();
-      }
+      // Always fetch dashboard stats to ensure they're up to date with the current filters
+      await fetchDashboardStatsStable();
       
       switch(reportType) {
         case 'sales':
           await Promise.all([
-            fetchSalesReport(),
+            fetchSalesReportStable(),
             fetchRecentSales()
           ]);
           break;
@@ -404,7 +360,7 @@ const Dashboard = () => {
           await fetchLowStockProducts();
           break;
         case 'inventory':
-          await fetchInventoryStats();
+          await fetchInventoryStatsStable();
           break;
         case 'accounts':
           await fetchClientAccountStatements();
@@ -418,19 +374,45 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [reportType, fetchInventoryStats, fetchSalesReport, dashboardStats]);
+  }, [reportType, fetchInventoryStatsStable, fetchSalesReportStable, fetchDashboardStatsStable, fetchLowStockProducts, fetchClientAccountStatements, fetchRecentSales]);
   // Initial load and when report type changes
-  useEffect(() => {
-    loadDashboardData();
-    console.log('Report type changed to:', reportType, 'Tab value:', tabValue);
-  }, [reportType, loadDashboardData, tabValue]);
+  const isInitialLoad = useRef(true);
   
-  // Reload when period/date filters change (but only for sales reports)
   useEffect(() => {
-    if (reportType === 'sales') {
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
       loadDashboardData();
+      console.log('Initial load for report type:', reportType, 'Tab value:', tabValue);
+    } else {
+      loadDashboardData();
+      console.log('Report type changed to:', reportType, 'Tab value:', tabValue);
     }
-  }, [period, startDate, endDate, reportType, loadDashboardData]);
+  }, [reportType, tabValue, loadDashboardData]);
+  
+  // Reload when period/date filters change (for all sections that support filtering)
+  const prevFilters = useRef({ period, startDate, endDate });
+  
+  useEffect(() => {
+    // Check if filters actually changed to prevent unnecessary calls
+    if (prevFilters.current.period !== period || 
+        prevFilters.current.startDate !== startDate || 
+        prevFilters.current.endDate !== endDate) {
+      
+      prevFilters.current = { period, startDate, endDate };
+      
+      console.log('Filters changed, reloading data for period:', period);
+      
+      // Always reload dashboard stats when filters change
+      fetchDashboardStatsStable();
+      
+      // Also reload the current report type's data
+      if (reportType === 'sales') {
+        fetchSalesReportStable();
+      } else if (reportType === 'inventory') {
+        fetchInventoryStatsStable();
+      }
+    }
+  }, [period, startDate, endDate, reportType, fetchDashboardStatsStable, fetchSalesReportStable, fetchInventoryStatsStable]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     console.log('Tab clicked, changing to index:', newValue);
@@ -1466,6 +1448,174 @@ const Dashboard = () => {
                       </TableBody>
                     </Table>
                   </TableContainer>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+          
+          {/* Stock Value per Product Table */}
+          <Grid container spacing={3} sx={{ mt: 2 }}>
+            <Grid item xs={12}>
+              <Card 
+                sx={{ 
+                  borderRadius: 2,
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.05)'
+                }}
+              >
+                <CardContent>
+                  <Typography variant="h6" fontWeight={600} gutterBottom>
+                    Valeur de stock par produit
+                  </Typography>
+                  
+                  {/* Filtering Controls */}
+                  <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <TextField
+                      label="Filtrer par produit"
+                      variant="outlined"
+                      size="small"
+                      value={productNameFilter}
+                      onChange={(e) => setProductNameFilter(e.target.value)}
+                      sx={{ minWidth: 200 }}
+                    />
+                    <FormControl variant="outlined" size="small" sx={{ minWidth: 150 }}>
+                      <InputLabel>Zone</InputLabel>
+                      <Select
+                        value={zoneFilter}
+                        onChange={(e) => setZoneFilter(e.target.value)}
+                        label="Zone"
+                      >
+                        <MenuItem value="">Toutes les zones</MenuItem>
+                        {inventoryStats?.zone_data?.length > 0 ? (
+                          inventoryStats.zone_data.map((zone) => (
+                            <MenuItem key={zone.zone} value={zone.zone}>
+                              {zone.zone}
+                            </MenuItem>
+                          ))
+                        ) : (
+                          inventoryStats?.product_stock_values?.length > 0 && (
+                            [...new Set(inventoryStats.product_stock_values.map(item => item.zone_name))]
+                              .filter(Boolean)
+                              .map((zoneName) => (
+                                <MenuItem key={zoneName} value={zoneName}>
+                                  {zoneName}
+                                </MenuItem>
+                              ))
+                          )
+                        )}
+                      </Select>
+                    </FormControl>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => {
+                        setProductNameFilter('');
+                        setZoneFilter('');
+                      }}
+                      disabled={!productNameFilter && !zoneFilter}
+                    >
+                      Réinitialiser
+                    </Button>
+                  </Box>
+
+                  {/* Data Grid */}
+                  <StandardDataGrid
+                    rows={
+                      inventoryStats?.product_stock_values
+                        ?.filter((item) => {
+                          const matchesProduct = !productNameFilter || 
+                            (item.product_name && item.product_name.toLowerCase().includes(productNameFilter.toLowerCase()));
+                          const matchesZone = !zoneFilter || 
+                            (item.zone_name && item.zone_name === zoneFilter);
+                          return matchesProduct && matchesZone;
+                        })
+                        ?.map((item) => ({
+                          id: `${item.product_id}-${item.zone_name}`,
+                          product_name: item.product_name || '',
+                          zone_name: item.zone_name || '',
+                          quantity: item.quantity || 0,
+                          unit_price: item.unit_price || 0,
+                          stock_value: item.stock_value || 0,
+                          unit_symbol: item.unit_symbol || '',
+                          percentage: inventoryStats.inventory_value > 0 
+                            ? ((item.stock_value / inventoryStats.inventory_value) * 100)
+                            : 0
+                        })) || []
+                    }
+                    columns={[
+                      { 
+                        field: 'product_name', 
+                        headerName: 'Produit', 
+                        flex: 1,
+                        minWidth: 150
+                      },
+                      { 
+                        field: 'zone_name', 
+                        headerName: 'Zone', 
+                        flex: 0.7,
+                        minWidth: 100
+                      },
+                      { 
+                        field: 'quantity', 
+                        headerName: 'Quantité', 
+                        flex: 0.8,
+                        minWidth: 120,
+                        align: 'right',
+                        headerAlign: 'right',
+                        valueFormatter: (value, row) => 
+                          `${(value as number).toLocaleString()} ${row.unit_symbol}`
+                      },
+                      { 
+                        field: 'unit_price', 
+                        headerName: 'Prix unitaire', 
+                        flex: 0.8,
+                        minWidth: 120,
+                        align: 'right',
+                        headerAlign: 'right',
+                        valueFormatter: (value) => formatCurrency(value as number)
+                      },
+                      { 
+                        field: 'stock_value', 
+                        headerName: 'Valeur de stock', 
+                        flex: 1,
+                        minWidth: 140,
+                        align: 'right',
+                        headerAlign: 'right',
+                        valueFormatter: (value) => formatCurrency(value as number),
+                        renderCell: (params) => (
+                          <Typography variant="body2" fontWeight={600}>
+                            {formatCurrency(params.value)}
+                          </Typography>
+                        )
+                      },
+                      { 
+                        field: 'percentage', 
+                        headerName: '% du stock total', 
+                        flex: 0.8,
+                        minWidth: 130,
+                        align: 'right',
+                        headerAlign: 'right',
+                        renderCell: (params) => (
+                          <Chip 
+                            label={`${params.value.toFixed(1)}%`} 
+                            size="small"
+                            color={
+                              params.value > 10 ? "primary" : 
+                              params.value > 5 ? "warning" : 
+                              "default"
+                            }
+                          />
+                        )
+                      }
+                    ]}
+                    loading={loading}
+                    page={stockValuePagination.page}
+                    rowsPerPage={stockValuePagination.pageSize}
+                    onPaginationChange={(page, pageSize) => 
+                      setStockValuePagination({ page, pageSize })
+                    }
+                    sx={{ height: 500 }}
+                    noDataMessage="Aucune donnée de stock disponible"
+                  />
                 </CardContent>
               </Card>
             </Grid>

@@ -2521,7 +2521,8 @@ const PaymentInfoCard = styled(Card)(() => ({
               Créer la vente
             </Button>
           </DialogActions>
-        </Dialog>        {/* Edit Sale Dialog - Simplified and user-friendly */}
+        </Dialog>        
+        {/* Edit Sale Dialog - Simplified and user-friendly */}
         <Dialog open={showEditModal} onClose={() => setShowEditModal(false)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ pb: 1, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center' }}>
             <ShoppingCart sx={{ mr: 1, color: 'primary.main' }} />

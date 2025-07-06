@@ -10,6 +10,12 @@ export interface Stock {
   updated_at: string;
 }
 
+// Enhanced stock interface with product pricing
+export interface EnhancedStock extends Stock {
+  unit_price?: number;
+  stock_value?: number;
+}
+
 export interface LowStockItem {
   id: number;
   name: string;

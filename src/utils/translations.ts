@@ -202,6 +202,9 @@ export const INVENTORY_TRANSLATIONS = {
   difference: 'Différence',
   unitPrice: 'Prix unitaire',
   totalPrice: 'Prix total',
+  stockValue: 'Valeur du stock',
+  totalQuantity: 'Quantité Total',
+  merchandiseValue: 'Valeur de la marchandise',
   
   // Actions spécifiques
   receive: 'Réceptionner',

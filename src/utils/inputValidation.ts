@@ -1,18 +1,27 @@
 // Reusable validation functions for number inputs
 
 /**
- * Validates integer input (positive whole numbers)
+ * Validates integer input (positive whole numbers including zero)
  * @param value - The string value from input
  * @param currentValue - The current numeric value (can be undefined)
  * @returns The validated numeric value
  */
 export const validateIntegerInput = (value: string, currentValue: number | undefined): number => {
-  if (value === '' || /^\d+$/.test(value)) {
-    const numValue = value === '' ? 0 : parseInt(value, 10);
-    if (numValue >= 0) {
+  // Allow empty string for user experience
+  if (value === '') {
+    return 0;
+  }
+  
+  // Improved regex to handle integers properly
+  // Allows: 0, 123, but not 00, 01, 001 (no leading zeros except single 0)
+  if (/^(0|[1-9]\d*)$/.test(value)) {
+    const numValue = parseInt(value, 10);
+    if (!isNaN(numValue) && numValue >= 0) {
       return numValue;
     }
   }
+  
+  // If input is invalid, return current value or 0
   return currentValue ?? 0;
 };
 

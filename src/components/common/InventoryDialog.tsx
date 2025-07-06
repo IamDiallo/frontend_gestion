@@ -22,6 +22,7 @@ import {
   FormControl,
   InputLabel,
   Select,
+  Autocomplete,
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
@@ -37,6 +38,17 @@ import {
 } from '../../utils/inputValidation';
 import { Product } from '../../interfaces/products';
 import { Zone, Supplier } from '../../interfaces/business';
+
+// Currency formatting function
+const formatCurrency = (amount: number | null | undefined): string => {
+  if (amount === null || amount === undefined) return '0 GNF';
+  return new Intl.NumberFormat('fr-GN', {
+    style: 'currency',
+    currency: 'GNF',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
 
 // Types for the different operation modes
 export type InventoryOperationType = 'supply' | 'transfer' | 'inventory';
@@ -97,6 +109,7 @@ interface InventoryDialogProps {
   onOpenScanner: () => void;
   getProductName: (productId: number) => string;
 }
+
 
 /**
  * Unified dialog component for all inventory operations (supply, transfer, inventory count)
@@ -190,15 +203,6 @@ const InventoryDialog: React.FC<InventoryDialogProps> = ({
   };
 
   const isSubmitDisabled = !!getSubmitValidation() || loading;
-
-  // Handle product selection with auto-price fill
-  const handleProductSelect = (productId: number) => {
-    const product = products.find(p => p.id === productId);
-    onFormDataChange({
-      currentProduct: product || null,
-      currentUnitPrice: product?.purchase_price ?? 0,
-    });
-  };
 
   // Handle quantity change with validation
   const handleQuantityChange = (value: string) => {
@@ -382,25 +386,38 @@ const InventoryDialog: React.FC<InventoryDialogProps> = ({
             </Box>
 
             {/* Product selection form */}
-            <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-              <FormControl sx={{ flexGrow: 1, minWidth: 200 }}>
-                <InputLabel>Produit</InputLabel>
-                <Select
-                  label="Produit"
-                  value={formData.currentProduct?.id || ''}
-                  onChange={(e) => handleProductSelect(e.target.value as number)}
-                >
-                  <MenuItem value="">
-                    <em>Sélectionner un produit</em>
-                  </MenuItem>
-                  {products.map((product) => (
-                    <MenuItem key={product.id} value={product.id}>
-                      {product.name}
-                      {operationType === 'supply' && product.purchase_price && ` (${product.purchase_price})`}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
+              <Autocomplete
+                options={products}
+                getOptionLabel={(option) => option.name}
+                value={formData.currentProduct}
+                onChange={(event, newValue) => {
+                  onFormDataChange({
+                    currentProduct: newValue,
+                    currentUnitPrice: newValue?.purchase_price ?? 0,
+                  });
+                }}
+                renderInput={(params) => (
+                  <TextField {...params}
+                    label="Produit"
+                    variant="outlined"
+                    fullWidth
+                  />
+                )}
+                renderOption={(props, option) => (
+                  <li {...props} key={`product-${option.id}`}>
+                    <Box sx={{ width: '100%' }}>
+                      <Typography variant="body1">{option.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Réf: {option.reference} • Prix: {formatCurrency(
+                          operationType === 'supply' ? option.purchase_price : option.selling_price
+                        )}
+                      </Typography>
+                    </Box>
+                  </li>
+                )}
+                sx={{ flexGrow: 1 }} 
+              />
 
               <TextField
                 label="Quantité"
@@ -428,9 +445,18 @@ const InventoryDialog: React.FC<InventoryDialogProps> = ({
                 variant="contained"
                 onClick={onAddItem}
                 disabled={isAddItemDisabled}
-                sx={{ alignSelf: 'flex-start', height: '56px' }}
+                sx={{ height: 'fit-content', px: 3 }}
               >
                 Ajouter
+              </StandardButton>
+              
+              <StandardButton
+                variant="outlined"
+                startIcon={<QrCodeScannerIcon />}
+                onClick={onOpenScanner}
+                sx={{ height: 'fit-content' }}
+              >
+                Scanner
               </StandardButton>
             </Box>
 
@@ -454,8 +480,8 @@ const InventoryDialog: React.FC<InventoryDialogProps> = ({
                       <TableRow key={index}>
                         <TableCell>{getProductName(item.product)}</TableCell>
                         <TableCell align="right">{item.quantity}</TableCell>
-                        <TableCell align="right">{item.unit_price}</TableCell>
-                        <TableCell align="right">{item.total_price}</TableCell>
+                        <TableCell align="right">{formatCurrency(item.unit_price)}</TableCell>
+                        <TableCell align="right">{formatCurrency(item.total_price)}</TableCell>
                         <TableCell align="right">
                           <IconButton 
                             size="small" 
@@ -467,6 +493,24 @@ const InventoryDialog: React.FC<InventoryDialogProps> = ({
                         </TableCell>
                       </TableRow>
                     ))}
+                    {/* Totals row */}
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 'bold' }}>
+                        Total
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                        {formData.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)}
+                      </TableCell>
+                      <TableCell align="right">
+                        {/* Empty cell for unit price column */}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                        {formatCurrency(formData.items.reduce((sum, item) => sum + (Number(item.total_price) || 0), 0))}
+                      </TableCell>
+                      <TableCell align="right">
+                        {/* Empty cell for actions column */}
+                      </TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
               </TableContainer>

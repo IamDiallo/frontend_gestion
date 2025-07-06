@@ -1835,5 +1835,108 @@ export const fetchProductQRCode = async (productId: number): Promise<Blob> => {
   }
 };
 
+// Dashboard API
+export const DashboardAPI = {
+  getStats: async (period = 'year', startDate?: string, endDate?: string) => {
+    try {
+      const params = new URLSearchParams();
+      params.append('period', period);
+      
+      if (period === 'custom' && startDate && endDate) {
+        params.append('start_date', startDate);
+        params.append('end_date', endDate);
+      }
+      
+      debugAPI.logRequest(`/dashboard/stats/?${params.toString()}`, 'GET');
+      const response = await api.get(`/dashboard/stats/?${params.toString()}`);
+      debugAPI.logResponse('/dashboard/stats/', response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError('/dashboard/stats/', error);
+      throw error;
+    }
+  },
+
+  getInventoryStats: async (period = 'year', startDate?: string, endDate?: string) => {
+    try {
+      const params = new URLSearchParams();
+      params.append('period', period);
+      
+      if (period === 'custom' && startDate && endDate) {
+        params.append('start_date', startDate);
+        params.append('end_date', endDate);
+      }
+      
+      debugAPI.logRequest(`/dashboard/inventory/?${params.toString()}`, 'GET');
+      const response = await api.get(`/dashboard/inventory/?${params.toString()}`);
+      debugAPI.logResponse('/dashboard/inventory/', response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError('/dashboard/inventory/', error);
+      throw error;
+    }
+  },
+
+  getLowStockProducts: async () => {
+    try {
+      debugAPI.logRequest('/dashboard/low-stock/', 'GET');
+      const response = await api.get('/dashboard/low-stock/');
+      debugAPI.logResponse('/dashboard/low-stock/', response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError('/dashboard/low-stock/', error);
+      throw error;
+    }
+  },
+
+  getRecentSales: async () => {
+    try {
+      debugAPI.logRequest('/dashboard/recent-sales/', 'GET');
+      const response = await api.get('/dashboard/recent-sales/');
+      debugAPI.logResponse('/dashboard/recent-sales/', response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError('/dashboard/recent-sales/', error);
+      throw error;
+    }
+  },
+
+  getSalesReport: async (period = 'year', startDate?: string, endDate?: string) => {
+    try {
+      const params = new URLSearchParams();
+      params.append('period', period);
+      
+      if (period === 'custom' && startDate && endDate) {
+        params.append('start_date', startDate);
+        params.append('end_date', endDate);
+      }
+      
+      debugAPI.logRequest(`/reports/sales/?${params.toString()}`, 'GET');
+      const response = await api.get(`/reports/sales/?${params.toString()}`);
+      debugAPI.logResponse('/reports/sales/', response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError('/reports/sales/', error);
+      throw error;
+    }
+  },
+
+  getClientAccountStatements: async (clientId?: number) => {
+    try {
+      const endpoint = clientId 
+        ? `/account-statements/client_balance/?client_id=${clientId}`
+        : '/account-statements/client_balance/';
+      
+      debugAPI.logRequest(endpoint, 'GET');
+      const response = await api.get(endpoint);
+      debugAPI.logResponse(endpoint, response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError('/account-statements/client_balance/', error);
+      throw error;
+    }
+  }
+};
+
 // Export the default api instance
 export default api;

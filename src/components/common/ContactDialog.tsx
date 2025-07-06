@@ -4,9 +4,9 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Box,
   Typography,
-  MenuItem
+  MenuItem,
+  Grid
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import { StandardButton, StandardTextField, StandardSelect } from './index';
@@ -117,145 +117,109 @@ const ContactDialog: React.FC<ContactDialogProps> = ({
         {getTitle()}
       </DialogTitle>
       
-      <DialogContent sx={{ p: 4, pt: 3 }}>
-        <Box sx={{ 
-          display: 'grid', 
-          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, 
-          gap: { xs: 2.5, sm: 3 },
-          '& .MuiTextField-root': {
-            '& .MuiInputBase-root': {
-              minHeight: '56px'
-            },
-            '& .MuiInputLabel-root': {
-              fontSize: '1rem'
-            }
-          },
-          '& .MuiFormControl-root': {
-            '& .MuiInputBase-root': {
-              minHeight: '56px'
-            },
-            '& .MuiInputLabel-root': {
-              fontSize: '1rem'
-            }
-          }
-        }}>
-          <StandardTextField
-            label={isClient ? "Nom du client" : "Nom du fournisseur"}
-            value={formData.name}
-            onChange={handleFieldChange('name')}
-            required
-            sx={{ 
-              mb: { xs: 1, sm: 0 },
-              '& .MuiInputBase-input': {
-                py: 1.5
-              }
-            }}
-          />
+      <DialogContent sx={{ p: 3, mt: 1 }}>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12} sm={6}>
+            <StandardTextField
+              label="Entreprise"
+              value={formData.name}
+              onChange={handleFieldChange('name')}
+              required
+              fullWidth
+            />
+          </Grid>
           
-          <StandardTextField
-            label="Personne de contact"
-            value={formData.contact_person}
-            onChange={handleFieldChange('contact_person')}
-            sx={{ 
-              mb: { xs: 1, sm: 0 },
-              '& .MuiInputBase-input': {
-                py: 1.5
-              }
-            }}
-          />
+          <Grid item xs={12} sm={6}>
+            <StandardTextField
+              label="Nom Prenom"
+              value={formData.contact_person}
+              onChange={handleFieldChange('contact_person')}
+              fullWidth
+            />
+          </Grid>
           
-          <StandardTextField
-            label="Email"
-            value={formData.email}
-            onChange={handleFieldChange('email')}
-            type="email"
-            sx={{ 
-              mb: { xs: 1, sm: 0 },
-              '& .MuiInputBase-input': {
-                py: 1.5
-              }
-            }}
-          />
+          <Grid item xs={12} sm={6}>
+            <StandardTextField
+              label="Email"
+              value={formData.email}
+              onChange={handleFieldChange('email')}
+              type="email"
+              fullWidth
+            />
+          </Grid>
           
-          <StandardTextField
-            label="Téléphone"
-            value={formData.phone}
-            onChange={handleFieldChange('phone')}
-            sx={{ 
-              mb: { xs: 1, sm: 0 },
-              '& .MuiInputBase-input': {
-                py: 1.5
-              }
-            }}
-          />
+          <Grid item xs={12} sm={6}>
+            <StandardTextField
+              label="Téléphone"
+              value={formData.phone}
+              onChange={handleFieldChange('phone')}
+              fullWidth
+            />
+          </Grid>
           
-          <StandardTextField
-            label="Adresse"
-            value={formData.address}
-            onChange={handleFieldChange('address')}
-            multiline
-            rows={2}
-            sx={{ 
-              gridColumn: { xs: '1', sm: '1 / span 2' },
-              mb: { xs: 1, sm: 0 },
-              '& .MuiInputBase-input': {
-                py: 1.5
-              }
-            }}
-          />
+          <Grid item xs={12}>
+            <StandardTextField
+              label="Adresse"
+              value={formData.address}
+              onChange={handleFieldChange('address')}
+              multiline
+              rows={2}
+              fullWidth
+            />
+          </Grid>
 
           {/* Price group for clients only */}
           {isClient && priceGroups && onPriceGroupChange && (
-            <StandardSelect
-              label="Groupe de prix"
-              value={formData.price_group || ''}
-              onChange={(e) => onPriceGroupChange(Number(e.target.value))}
-              sx={{ mb: { xs: 1, sm: 0 } }}
-            >
-              {priceGroups.map((priceGroup) => (
-                <MenuItem key={priceGroup.id} value={priceGroup.id}>
-                  {priceGroup.name}
-                </MenuItem>
-              ))}
-            </StandardSelect>
+            <Grid item xs={12} sm={6}>
+              <StandardSelect
+                label="Groupe de prix"
+                value={formData.price_group || ''}
+                onChange={(e) => onPriceGroupChange(Number(e.target.value))}
+                fullWidth
+              >
+                {priceGroups.map((priceGroup) => (
+                  <MenuItem key={priceGroup.id} value={priceGroup.id}>
+                    {priceGroup.name}
+                  </MenuItem>
+                ))}
+              </StandardSelect>
+            </Grid>
           )}
 
           {/* Account selection */}
-          <StandardSelect
-            label={getAccountLabel()}
-            value={formData.account ?? ''}
-            onChange={(e) => onAccountChange(e.target.value === '' ? '' : Number(e.target.value))}
-            sx={{ 
-              gridColumn: isClient && priceGroups ? { xs: '1', sm: '2' } : { xs: '1', sm: '1 / span 2' },
-              mb: { xs: 1, sm: 0 }
-            }}
-          >
-            <MenuItem value="">Sélectionner un compte</MenuItem>
-            {loadingAccounts ? (
-              <MenuItem disabled>Chargement des comptes...</MenuItem>
-            ) : availableAccounts && Array.isArray(availableAccounts) && availableAccounts.length === 0 ? (
-              <MenuItem disabled>{getAccountPlaceholder()}</MenuItem>
-            ) : (
-              availableAccounts && Array.isArray(availableAccounts) && availableAccounts.map(account => (
-                <MenuItem key={account.id} value={account.id}>{account.name}</MenuItem>
-              ))
-            )}
-          </StandardSelect>
+          <Grid item xs={12} sm={isClient && priceGroups ? 6 : 12}>
+            <StandardSelect
+              label={getAccountLabel()}
+              value={formData.account ?? ''}
+              onChange={(e) => onAccountChange(e.target.value === '' ? '' : Number(e.target.value))}
+              fullWidth
+            >
+              <MenuItem value="">Sélectionner un compte</MenuItem>
+              {loadingAccounts ? (
+                <MenuItem disabled>Chargement des comptes...</MenuItem>
+              ) : availableAccounts && Array.isArray(availableAccounts) && availableAccounts.length === 0 ? (
+                <MenuItem disabled>{getAccountPlaceholder()}</MenuItem>
+              ) : (
+                availableAccounts && Array.isArray(availableAccounts) && availableAccounts.map(account => (
+                  <MenuItem key={account.id} value={account.id}>{account.name}</MenuItem>
+                ))
+              )}
+            </StandardSelect>
+          </Grid>
           
           {/* Account creation message */}
           {availableAccounts && Array.isArray(availableAccounts) && availableAccounts.length === 0 && !loadingAccounts && (
-            <Typography 
-              variant="caption" 
-              color="error" 
-              sx={{ 
-                mt: 1, 
-                gridColumn: '1 / span 2' 
-              }}
-            >
-              {getAccountCreationMessage()}
-            </Typography>
+            <Grid item xs={12}>
+              <Typography 
+                variant="caption" 
+                color="error" 
+                sx={{ mt: 1 }}
+              >
+                {getAccountCreationMessage()}
+              </Typography>
+            </Grid>
           )}
-        </Box>
+        </Grid>
       </DialogContent>
       
       <DialogActions sx={{ p: 2, pt: 0 }}>

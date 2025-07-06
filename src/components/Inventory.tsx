@@ -61,7 +61,7 @@ import {
 import {
   InventoryAPI, ZonesAPI, ProductsAPI, SuppliersAPI
 } from '../services/api';
-import { Stock, StockSupply, StockTransfer, Inventory as InventoryType, StockMovement, CreateInventory, UpdateInventory } from '../interfaces/inventory';
+import { Stock, EnhancedStock, StockSupply, StockTransfer, Inventory as InventoryType, StockMovement, CreateInventory, UpdateInventory } from '../interfaces/inventory';
 import { Zone, Supplier } from '../interfaces/business';
 import { Product } from '../interfaces/products';
 import { usePermissions } from '../context/PermissionContext';
@@ -438,10 +438,21 @@ const InventoryManagement: React.FC = () => {
     const updatedItems = [...dialogFormData.items];
     
     if (existingItemIndex >= 0) {
-      updatedItems[existingItemIndex] = newItem;
+      // Increment quantity instead of replacing the item
+      const existingItem = updatedItems[existingItemIndex];
+      const newQuantity = existingItem.quantity + (dialogFormData.currentQuantity ?? 0);
+      const newTotalPrice = newQuantity * (dialogFormData.currentUnitPrice ?? 0);
+      
+      updatedItems[existingItemIndex] = {
+        ...existingItem,
+        quantity: newQuantity,
+        unit_price: dialogFormData.currentUnitPrice ?? 0, // Update unit price
+        total_price: newTotalPrice
+      };
+      
       setSnackbar({
         open: true,
-        message: `Produit ${dialogFormData.currentProduct.name} mis à jour.`,
+        message: `Quantité de ${dialogFormData.currentProduct.name} mise à jour: ${newQuantity}`,
         severity: 'info'
       });
     } else {
@@ -1068,6 +1079,35 @@ const InventoryManagement: React.FC = () => {
     return 'draft'; // Default fallback
   };
 
+  // Helper functions to calculate totals for supplies, transfers, and inventories
+  const calculateSupplyTotals = (supply: StockSupply) => {
+    if (!supply.items || supply.items.length === 0) {
+      return { totalQuantity: 0, totalValue: 0 };
+    }
+    
+    const totalQuantity = supply.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+    const totalValue = supply.items.reduce((sum, item) => sum + (Number(item.total_price) || 0), 0);
+    
+    return { totalQuantity, totalValue };
+  };
+
+  const calculateTransferTotalQuantity = (transfer: StockTransfer) => {
+    if (!transfer.items || transfer.items.length === 0) {
+      return 0;
+    }
+    
+    return transfer.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+  };
+
+  const calculateInventoryTotalQuantity = (inventory: InventoryType) => {
+    if (!inventory.items || inventory.items.length === 0) {
+      return 0;
+    }
+    
+    return inventory.items.reduce((sum, item) => sum + (Number(item.actual_quantity) || 0), 0);
+  };
+
+
   // Initial data loading
   useEffect(() => {
     const fetchInventoryData = async () => {
@@ -1209,6 +1249,21 @@ const InventoryManagement: React.FC = () => {
     setSnackbar({ ...snackbar, open: false });
   };
 
+  // Helper function to enhance stock data with product pricing
+  const enhanceStockWithPricing = (stocks: Stock[]): EnhancedStock[] => {
+    return stocks.map(stock => {
+      const product = products.find(p => p.id === stock.product);
+      const unitPrice = product?.purchase_price ?? 0;
+      const stockValue = unitPrice * stock.quantity;
+      
+      return {
+        ...stock,
+        unit_price: unitPrice,
+        stock_value: stockValue
+      };
+    });
+  };
+
   // Render current stock tab content
   const renderCurrentStock = () => {
     const filteredStocks = stocks.filter(stock => {
@@ -1218,6 +1273,9 @@ const InventoryManagement: React.FC = () => {
 
       return productNameMatch && zoneFilterMatch;
     });
+
+    // Enhance stocks with pricing information
+    const enhancedStocks = enhanceStockWithPricing(filteredStocks);
 
     return (
       <>
@@ -1257,7 +1315,7 @@ const InventoryManagement: React.FC = () => {
         </Box>
         <StandardDataGrid
           title={INVENTORY_TRANSLATIONS.currentStock}
-          rows={filteredStocks}
+          rows={enhancedStocks}
           loading={loading}
           page={page}
           rowsPerPage={rowsPerPage}
@@ -1269,8 +1327,8 @@ const InventoryManagement: React.FC = () => {
             {
               field: 'product_name',
               headerName: INVENTORY_TRANSLATIONS.product,
-              flex: 1,
-              width: 120
+              flex: 1.5,
+              width: 150
             },
             {
               field: 'zone',
@@ -1294,6 +1352,32 @@ const InventoryManagement: React.FC = () => {
                         <WarningIcon color="error" fontSize="small" sx={{ ml: 1 }} />
                       </Tooltip>
                     )}
+                  </Box>
+                );
+              }
+            },
+            {
+              field: 'unit_price',
+              headerName: INVENTORY_TRANSLATIONS.unitPrice,
+              flex: 1,
+              renderCell: (params: GridRenderCellParams) => {
+                const price = params.value || 0;
+                return (
+                  <Box sx={{ textAlign: 'right' }}>
+                    {price.toLocaleString('fr-FR')} GNF
+                  </Box>
+                );
+              }
+            },
+            {
+              field: 'stock_value',
+              headerName: INVENTORY_TRANSLATIONS.stockValue,
+              flex: 1,
+              renderCell: (params: GridRenderCellParams) => {
+                const value = params.value || 0;
+                return (
+                  <Box sx={{ textAlign: 'right', fontWeight: 'medium' }}>
+                    {value.toLocaleString('fr-FR')} GNF
                   </Box>
                 );
               }
@@ -1455,6 +1539,34 @@ const InventoryManagement: React.FC = () => {
                 flex: 1,
                 renderCell: (params: GridRenderCellParams) => (
                   <StatusChip status={params.value} />
+                )
+              },
+              {
+                field: 'totalQuantity',
+                headerName: INVENTORY_TRANSLATIONS.totalQuantity,
+                flex: 1,
+                valueGetter: (params, row) => {
+                  const totals = calculateSupplyTotals(row);
+                  return totals.totalQuantity;
+                },
+                renderCell: (params: GridRenderCellParams) => (
+                  <Box sx={{ textAlign: 'right' }}>
+                    {params.value}
+                  </Box>
+                )
+              },
+              {
+                field: 'merchandiseValue',
+                headerName: INVENTORY_TRANSLATIONS.merchandiseValue,
+                flex: 1,
+                valueGetter: (params, row) => {
+                  const totals = calculateSupplyTotals(row);
+                  return totals.totalValue;
+                },
+                renderCell: (params: GridRenderCellParams) => (
+                  <Box sx={{ textAlign: 'right' }}>
+                    {(params.value || 0).toLocaleString('fr-FR')} GNF
+                  </Box>
                 )
               },
               {
@@ -1648,6 +1760,19 @@ const InventoryManagement: React.FC = () => {
                 )
               },
               {
+                field: 'totalQuantity',
+                headerName: INVENTORY_TRANSLATIONS.totalQuantity,
+                flex: 1,
+                valueGetter: (params, row) => {
+                  return calculateTransferTotalQuantity(row);
+                },
+                renderCell: (params: GridRenderCellParams) => (
+                  <Box sx={{ textAlign: 'right' }}>
+                    {params.value}
+                  </Box>
+                )
+              },
+              {
                 field: 'actions',
                 headerName: 'Actions',
                 flex: 1,
@@ -1820,6 +1945,19 @@ const InventoryManagement: React.FC = () => {
                 flex: 1,
                 renderCell: (params: GridRenderCellParams) => (
                   <StatusChip status={params.value} />
+                )
+              },
+              {
+                field: 'totalQuantity',
+                headerName: INVENTORY_TRANSLATIONS.totalQuantity,
+                flex: 1,
+                valueGetter: (params, row) => {
+                  return calculateInventoryTotalQuantity(row);
+                },
+                renderCell: (params: GridRenderCellParams) => (
+                  <Box sx={{ textAlign: 'right' }}>
+                    {params.value}
+                  </Box>
                 )
               },
               {
