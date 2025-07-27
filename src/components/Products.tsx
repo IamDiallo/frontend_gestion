@@ -357,7 +357,7 @@ const Products = () => {
   };
 
   return (
-    <PermissionGuard requiredPermission="view_products" fallbackPath="/">
+    <PermissionGuard requiredPermission="view_product" fallbackPath="/">
       <Box>
         <Box 
           sx={{ 

@@ -63,6 +63,7 @@ import {
 } from '../services/api';
 import { Stock, EnhancedStock, StockSupply, StockTransfer, Inventory as InventoryType, StockMovement, CreateInventory, UpdateInventory } from '../interfaces/inventory';
 import { Zone, Supplier } from '../interfaces/business';
+import PermissionGuard from './PermissionGuard';
 import { Product } from '../interfaces/products';
 import { usePermissions } from '../context/PermissionContext';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -2395,7 +2396,8 @@ const InventoryManagement: React.FC = () => {
 
   // Main component render
   return (
-    <Box sx={{ width: '100%' }}>
+    <PermissionGuard requiredPermission="view_stock" fallbackPath="/">
+      <Box sx={{ width: '100%' }}>
       <Typography variant="h5" component="h1" gutterBottom>
         Gestion des Stocks
       </Typography>
@@ -2645,6 +2647,7 @@ const InventoryManagement: React.FC = () => {
         </Alert>
       </Snackbar>
     </Box>
+    </PermissionGuard>
   );
 };
 

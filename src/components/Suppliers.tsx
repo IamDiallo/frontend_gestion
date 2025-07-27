@@ -346,7 +346,7 @@ const Suppliers = () => {
   };
 
   return (
-    <PermissionGuard requiredPermission="view_suppliers" fallbackPath="/">
+    <PermissionGuard requiredPermission="view_supplier" fallbackPath="/">
       <Box>
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4" component="h1" gutterBottom>

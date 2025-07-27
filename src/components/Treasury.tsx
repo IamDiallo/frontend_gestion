@@ -28,6 +28,7 @@ import WarningIcon from '@mui/icons-material/Warning';
 import { useSnackbar } from 'notistack';
 import { ClientsAPI, SettingsAPI, TreasuryAPI, SalesAPI, AccountsAPI } from '../services/api';
 import { Client, Account, ClientDeposit, TabPanelProps, OutstandingSale, AccountStatement, ActualClientBalanceResponse, AccountTransfer } from '../interfaces/business';
+import PermissionGuard from './PermissionGuard';
 import { 
   formatCurrency, 
   formatDate, 
@@ -663,7 +664,8 @@ const Treasury = () => {
   };
 
   return (
-    <Box>
+    <PermissionGuard requiredPermission="view_cashflow" fallbackPath="/">
+      <Box>
       <Box 
         sx={{
           display: 'flex',
@@ -2366,6 +2368,7 @@ const Treasury = () => {
         </Alert>
       </Snackbar>
     </Box>
+    </PermissionGuard>
   );
 };
 

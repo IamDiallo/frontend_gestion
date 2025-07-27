@@ -140,8 +140,21 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
       permissionToCheck = permission.split('.')[1];
     }
     
+    const hasAccess = userPermissions.includes(permissionToCheck);
+    
+    // Debug logging for important permission checks
+    if (['view_sale', 'view_client', 'view_product', 'view_stock', 'view_cashflow', 'change_user'].includes(permissionToCheck)) {
+      console.log('🔍 Permission Check:', {
+        requested: permission,
+        checking: permissionToCheck,
+        userPermissions: userPermissions.slice(0, 15), // Show first 15 to avoid spam
+        hasAccess,
+        isAdmin
+      });
+    }
+    
     // Direct match in simplified permissions
-    return userPermissions.includes(permissionToCheck);
+    return hasAccess;
   };
 
   // Function to refresh permissions (useful after login/logout)

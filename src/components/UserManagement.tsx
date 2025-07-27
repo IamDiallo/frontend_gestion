@@ -1409,7 +1409,7 @@ const UserManagement = () => {
 
   return (
     <PermissionGuard
-      requiredPermission="auth.change_user"
+      requiredPermission="view_user"
       fallbackPath="/"
     >
       <Box>

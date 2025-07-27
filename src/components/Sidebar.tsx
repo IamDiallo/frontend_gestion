@@ -125,7 +125,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
       to: "/treasury",
       icon: <AccountBalance />,
       text: "Trésorerie",
-      requiredPermission: "view_cashflow" // Use an actual permission from your list
+      requiredPermission: "view_cashflow"
     },
     // Admin section
     {
@@ -141,7 +141,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
       to: "/settings",
       icon: <Settings />,
       text: "Paramètres", 
-      requiredPermission: "change_user" // Use an actual admin permission from your list
+      requiredPermission: "change_user" // Use permission you actually have
     }
   ];
 

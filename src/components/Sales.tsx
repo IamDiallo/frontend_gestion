@@ -1888,7 +1888,7 @@ const PaymentInfoCard = styled(Card)(() => ({
   };
 
   return (
-    <PermissionGuard requiredPermission="view_sales" fallbackPath="/">
+    <PermissionGuard requiredPermission="view_sale" fallbackPath="/">
       <Box>
         {/* Header with improved styling */}
         <Box 

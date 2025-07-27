@@ -516,7 +516,7 @@ const Settings = () => {
   };
 
   return (
-    <PermissionGuard requiredPermission="view_settings" fallbackPath="/">
+    <PermissionGuard requiredPermission="change_user" fallbackPath="/">
       <Box sx={{ backgroundColor: theme.palette.background.default, minHeight: '100vh', p: 3 }}>
         <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold' }}>
           Paramètres du système

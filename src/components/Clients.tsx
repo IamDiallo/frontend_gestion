@@ -454,7 +454,7 @@ const Clients = () => {
   ];
 
   return (
-    <PermissionGuard requiredPermission="view_clients" fallbackPath="/">
+    <PermissionGuard requiredPermission="view_client" fallbackPath="/">
       <Box>
         <Box sx={{ mb: 4 }}>
           <Typography variant="h4" component="h1" gutterBottom>
