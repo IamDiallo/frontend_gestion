@@ -429,27 +429,66 @@ export const createDataWithPermissionCheck = async <T>(endpoint: string, data: T
 
 // Clients API
 export const ClientsAPI = {
-  getAll: async (): Promise<Client[]> => {
+  getAll: async () => {
     try {
       debugAPI.logRequest('/clients/', 'GET');
       const response = await api.get('/clients/');
-      
-      // Ensure response.data is an array
-      const clients = Array.isArray(response.data) ? response.data : 
-        (response.data && response.data.results ? response.data.results : []);
-      
-      debugAPI.logResponse('/clients/', { ...response, data: clients });
-      return clients;
+      debugAPI.logResponse('/clients/', response);
+      // Return just the results array to maintain backward compatibility
+      return response.data.results || response.data;
     } catch (error) {
       debugAPI.logError('/clients/', error);
       throw error;
     }
   },
-  
-  get: (id: number): Promise<Client> => fetchData(`clients/${id}`),
-  create: (data: Client): Promise<Client> => createData('clients', data),
-  update: (id: number, data: Client): Promise<Client> => updateData('clients', id, data),
-  delete: (id: number): Promise<boolean> => deleteData('clients', id),
+
+  getById: async (id: number) => {
+    try {
+      debugAPI.logRequest(`/clients/${id}/`, 'GET');
+      const response = await api.get(`/clients/${id}/`);
+      debugAPI.logResponse(`/clients/${id}/`, response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError(`/clients/${id}/`, error);
+      throw error;
+    }
+  },
+
+  create: async (client: Partial<Client>) => {
+    try {
+      debugAPI.logRequest('/clients/', 'POST', client);
+      const response = await api.post('/clients/', client);
+      debugAPI.logResponse('/clients/', response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError('/clients/', error);
+      throw error;
+    }
+  },
+
+  update: async (id: number, client: Partial<Client>) => {
+    try {
+      debugAPI.logRequest(`/clients/${id}/`, 'PUT', client);
+      const response = await api.put(`/clients/${id}/`, client);
+      debugAPI.logResponse(`/clients/${id}/`, response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError(`/clients/${id}/`, error);
+      throw error;
+    }
+  },
+
+  delete: async (id: number) => {
+    try {
+      debugAPI.logRequest(`/clients/${id}/`, 'DELETE');
+      const response = await api.delete(`/clients/${id}/`);
+      debugAPI.logResponse(`/clients/${id}/`, response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError(`/clients/${id}/`, error);
+      throw error;
+    }
+  }
 };
 
 // Zones API
@@ -825,10 +864,10 @@ export const InventoryAPI = {
     }
   },
   
-  checkStockAvailability: async (productId: number, zoneId: number, quantity: number): Promise<{available: boolean, stock: number}> => {
+  checkStockAvailability: async (productId: number, zoneId: number, quantity: number): Promise<{available: boolean, current_stock: number}> => {
     try {
-      debugAPI.logRequest(`/stocks/check_availability/?product=${productId}&zone=${zoneId}&quantity=${quantity}`, 'GET');
-      const response = await api.get(`/stocks/check_availability/?product=${productId}&zone=${zoneId}&quantity=${quantity}`);
+      debugAPI.logRequest(`/stocks/check_availability/?product_id=${productId}&zone_id=${zoneId}&quantity=${quantity}`, 'GET');
+      const response = await api.get(`/stocks/check_availability/?product_id=${productId}&zone_id=${zoneId}&quantity=${quantity}`);
       debugAPI.logResponse('/stocks/check_availability/', response);
       return response.data;
     } catch (error) {
@@ -987,6 +1026,18 @@ export const SalesAPI = {
       return response.data;
     } catch (error) {
       debugAPI.logError(`/sales/${saleId}/pay_from_account/`, error);
+      throw error;
+    }
+  },
+  
+  recalculatePaymentAmounts: async (): Promise<{ success: boolean; message: string; sales_updated: number }> => {
+    try {
+      debugAPI.logRequest('/sales/recalculate_payment_amounts/', 'POST');
+      const response = await api.post('/sales/recalculate_payment_amounts/');
+      debugAPI.logResponse('/sales/recalculate_payment_amounts/', response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError('/sales/recalculate_payment_amounts/', error);
       throw error;
     }
   },
@@ -1937,6 +1988,100 @@ export const DashboardAPI = {
     }
   }
 };
+
+// Dashboard API exports for Dashboard component
+export const dashboardAPI = DashboardAPI;
+
+// Dashboard-related types and interfaces
+export interface SalesData {
+  month: string;
+  amount: number;
+}
+
+export interface CategoryData {
+  name: string;
+  value: number;
+  category?: string;
+  amount?: number;
+}
+
+export interface TopProduct {
+  id: number;
+  name: string;
+  quantity: number;
+  revenue: number;
+}
+
+export interface ReportData {
+  monthly_data: SalesData[];
+  category_data: CategoryData[];
+  top_products: TopProduct[];
+}
+
+export interface DashboardStats {
+  total_sales: number;
+  total_clients: number;
+  total_products: number;
+  total_suppliers: number;
+}
+
+export interface LowStockProduct {
+  id: number;
+  name: string;
+  category: string;
+  quantity: number;
+  threshold: number;
+  zone: string;
+  unit: string;
+  current_stock: number;
+  min_stock_level: number;
+}
+
+export interface ProductStockValue {
+  product_id: number;
+  product_name: string;
+  zone_name: string;
+  quantity: number;
+  unit_price: number;
+  stock_value: number;
+  unit_symbol: string;
+}
+
+export interface InventoryStats {
+  total_value: number;
+  low_stock_count: number;
+  inventory_value: number;
+  low_stock_products: LowStockProduct[];
+  product_stock_values: ProductStockValue[];
+  inflow: number;
+  outflow: number;
+  category_data: { category: string; value: number; }[];
+  zone_data: { zone: string; value: number; }[];
+  historical_value?: { name: string; value: number; }[];
+}
+
+export interface ClientWithAccount {
+  id: number;
+  name: string;
+  balance: number;
+  account: number;
+  account_balance: number;
+  last_transaction_date?: string;
+}
+
+export interface AccountStatement {
+  id: number;
+  date: string;
+  description: string;
+  amount: number;
+  balance: number;
+  transaction_type: string;
+  transaction_type_display: string;
+  reference?: string;
+  debit: number;
+  credit: number;
+  client_id: number;
+}
 
 // Export the default api instance
 export default api;

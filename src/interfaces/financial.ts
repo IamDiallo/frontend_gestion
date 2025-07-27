@@ -59,6 +59,7 @@ export interface CashReceipt {
   client?: number;
   date: string;
   amount: number;
+  allocated_amount?: number;
   description?: string;
   payment_method?: number;
   created_by?: number;

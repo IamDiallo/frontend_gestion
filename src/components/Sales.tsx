@@ -39,11 +39,7 @@ import {
 } from '@mui/material';
 import { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import { 
-  StandardButton, 
   StandardDataGrid, 
-  StandardTextField, 
-  StandardSelect, 
-  StandardAutocomplete,
   StatusChip 
 } from './common';
 import { t } from '../utils/translations';
@@ -508,7 +504,7 @@ const PaymentInfoCard = styled(Card)(() => ({
       );
       
       if (!stockAvailability.available) {
-        setStockError(`Stock insuffisant pour ${currentProduct.name}. Disponible: ${stockAvailability.stock}, Demandé: ${currentQuantity}`);
+        setStockError(`Stock insuffisant pour ${currentProduct.name}. Disponible: ${stockAvailability.current_stock}, Demandé: ${currentQuantity}`);
         return;
       }
       
@@ -1096,6 +1092,16 @@ const PaymentInfoCard = styled(Card)(() => ({
     try {
       if (!quote.id) return;
       
+      // Check if quote is already converted
+      if (quote.is_converted) {
+        setSnackbarState({
+          open: true,
+          message: 'Ce devis a déjà été converti en vente',
+          severity: 'warning'
+        });
+        return;
+      }
+      
       // Set the quote for conversion and show modal for zone selection
       setSelectedQuoteForConversion(quote);
       setShowQuoteConversionModal(true);
@@ -1113,6 +1119,18 @@ const PaymentInfoCard = styled(Card)(() => ({
   const confirmQuoteConversion = async () => {
     try {
       if (!selectedQuoteForConversion || !selectedQuoteForConversion.id) return;
+      
+      // Double-check if quote is already converted
+      if (selectedQuoteForConversion.is_converted) {
+        setSnackbarState({
+          open: true,
+          message: 'Ce devis a déjà été converti en vente',
+          severity: 'warning'
+        });
+        setShowQuoteConversionModal(false);
+        return;
+      }
+      
       if (!selectedZone) {
         setSnackbarState({
           open: true,
@@ -1139,9 +1157,20 @@ const PaymentInfoCard = styled(Card)(() => ({
       });
     } catch (err) {
       console.error('Error converting quote to sale:', err);
+      
+      // Handle specific error types
+      let errorMessage = 'Erreur lors de la conversion du devis en vente. Veuillez réessayer.';
+      
+      if (err && typeof err === 'object' && 'response' in err) {
+        const response = (err as { response?: { data?: { error?: string; type?: string } } }).response;
+        if (response?.data?.error) {
+          errorMessage = response.data.error;
+        }
+      }
+      
       setSnackbarState({
         open: true,
-        message: 'Erreur lors de la conversion du devis en vente. Veuillez réessayer.',
+        message: errorMessage,
         severity: 'error'
       });
     }
@@ -1553,6 +1582,22 @@ const PaymentInfoCard = styled(Card)(() => ({
         return formatCurrency(row.total_amount);
       }
     },
+    {
+      field: 'is_converted',
+      headerName: 'Converti',
+      flex: 0.8,
+      renderCell: (params: GridRenderCellParams) => {
+        if (!params.row) return <></>;
+        return (
+          <Chip
+            label={params.row.is_converted ? 'Oui' : 'Non'}
+            color={params.row.is_converted ? 'success' : 'default'}
+            size="small"
+            variant={params.row.is_converted ? 'filled' : 'outlined'}
+          />
+        );
+      }
+    },
     { 
       field: 'status', 
       headerName: 'Statut', 
@@ -1604,7 +1649,16 @@ const PaymentInfoCard = styled(Card)(() => ({
                 e.stopPropagation();
                 handleConvertQuoteToSale(params.row);
               }}
-              disabled={!params.row.status || (params.row.status !== 'draft' && params.row.status !== 'sent')}
+              disabled={
+                !params.row.status || 
+                params.row.is_converted ||
+                (params.row.status !== 'draft' && params.row.status !== 'sent' && params.row.status !== 'accepted')
+              }
+              title={
+                params.row.is_converted 
+                  ? "Ce devis a déjà été converti en vente" 
+                  : "Convertir en vente"
+              }
             >
               <PaymentsIcon fontSize="small" />
             </IconButton>
@@ -3831,9 +3885,14 @@ const PaymentInfoCard = styled(Card)(() => ({
                 <Typography variant="subtitle1">
                   Convertir le devis {selectedQuoteForConversion?.reference} en vente.
                 </Typography>
+                {selectedQuoteForConversion?.is_converted && (
+                  <Alert severity="warning" sx={{ mt: 2 }}>
+                    Ce devis a déjà été converti en vente.
+                  </Alert>
+                )}
               </Grid>
               <Grid item xs={12}>
-                <FormControl fullWidth required>
+                <FormControl fullWidth required disabled={selectedQuoteForConversion?.is_converted}>
                   <InputLabel>Zone</InputLabel>
                   <Select
                     value={selectedZone}
@@ -3853,7 +3912,7 @@ const PaymentInfoCard = styled(Card)(() => ({
             <Button
               variant="contained"
               onClick={confirmQuoteConversion}
-              disabled={!selectedQuoteForConversion}
+              disabled={!selectedQuoteForConversion || selectedQuoteForConversion?.is_converted}
             >
               Convertir
             </Button>

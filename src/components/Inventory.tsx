@@ -362,6 +362,7 @@ const InventoryManagement: React.FC = () => {
         resetFormData.zone = item.zone;
         resetFormData.status = item.status as InventoryDialogStatus;
         resetFormData.items = (item.items || []).map(i => ({
+          id: i.id, // Preserve the original item ID for existing items
           product: i.product,
           quantity: i.quantity,
           unit_price: i.unit_price ?? 0,
@@ -375,6 +376,7 @@ const InventoryManagement: React.FC = () => {
           const prod = products.find(p => p.id === i.product);
           const price = prod?.purchase_price ?? 0;
           return {
+            id: i.id, // Preserve the original item ID for existing items
             product: i.product,
             quantity: i.quantity,
             unit_price: price,
@@ -389,6 +391,7 @@ const InventoryManagement: React.FC = () => {
           const price = prod?.purchase_price ?? 0;
           const qty = i.actual_quantity ?? 0;
           return {
+            id: i.id, // Preserve the original item ID for existing items
             product: i.product,
             quantity: qty,
             unit_price: price,
@@ -426,11 +429,15 @@ const InventoryManagement: React.FC = () => {
       return;
     }
 
-    const totalPrice = (dialogFormData.currentQuantity ?? 0) * (dialogFormData.currentUnitPrice ?? 0);
+    // Ensure we have numbers, not strings
+    const currentQuantity = Number(dialogFormData.currentQuantity ?? 0);
+    const currentUnitPrice = Number(dialogFormData.currentUnitPrice ?? 0);
+    const totalPrice = currentQuantity * currentUnitPrice;
+    
     const newItem = {
       product: dialogFormData.currentProduct.id,
-      quantity: dialogFormData.currentQuantity ?? 0,
-      unit_price: dialogFormData.currentUnitPrice ?? 0,
+      quantity: currentQuantity,
+      unit_price: currentUnitPrice,
       total_price: totalPrice
     };
 
@@ -440,13 +447,17 @@ const InventoryManagement: React.FC = () => {
     if (existingItemIndex >= 0) {
       // Increment quantity instead of replacing the item
       const existingItem = updatedItems[existingItemIndex];
-      const newQuantity = existingItem.quantity + (dialogFormData.currentQuantity ?? 0);
-      const newTotalPrice = newQuantity * (dialogFormData.currentUnitPrice ?? 0);
+      const existingQuantity = Number(existingItem.quantity ?? 0);
+      
+      // Use the current unit price (allow user to update price)
+      const finalUnitPrice = currentUnitPrice;
+      const newQuantity = existingQuantity + currentQuantity;
+      const newTotalPrice = newQuantity * finalUnitPrice;
       
       updatedItems[existingItemIndex] = {
         ...existingItem,
         quantity: newQuantity,
-        unit_price: dialogFormData.currentUnitPrice ?? 0, // Update unit price
+        unit_price: finalUnitPrice,
         total_price: newTotalPrice
       };
       
@@ -898,8 +909,8 @@ const InventoryManagement: React.FC = () => {
     if (!product) return;
     
     // When adding via scanner, use purchase price or default
-    const unitPrice = product.purchase_price ?? 0;
-    const quantity = scannedQuantity ?? 1;
+    const unitPrice = Number(product.purchase_price ?? 0);
+    const quantity = Number(scannedQuantity ?? 1);
     const newItem = {
       product: product.id,
       quantity: quantity,
@@ -913,8 +924,19 @@ const InventoryManagement: React.FC = () => {
     
     if (existingItemIndex >= 0) {
       // Update quantity if product already exists
-      updatedItems[existingItemIndex].quantity += quantity;
-      updatedItems[existingItemIndex].total_price = updatedItems[existingItemIndex].quantity * updatedItems[existingItemIndex].unit_price;
+      const existingItem = updatedItems[existingItemIndex];
+      const existingQuantity = Number(existingItem.quantity ?? 0);
+      const existingUnitPrice = Number(existingItem.unit_price ?? 0);
+      
+      // Keep existing unit price, only update quantity
+      const newQuantity = existingQuantity + quantity;
+      const newTotalPrice = newQuantity * existingUnitPrice;
+      
+      updatedItems[existingItemIndex] = {
+        ...existingItem,
+        quantity: newQuantity,
+        total_price: newTotalPrice
+      };
     } else {
       // Add new item
       updatedItems.push(newItem);
@@ -2010,7 +2032,7 @@ const InventoryManagement: React.FC = () => {
       'sale': 'Vente',
       'transfer_in': 'Entrée par transfert',
       'transfer_out': 'Sortie par transfert',
-      'inventory': 'Ajustement',
+      'inventory': 'Ajustement d\'inventaire',
       'production': 'Production',
       'return': 'Retour'
     };
@@ -2140,13 +2162,143 @@ const InventoryManagement: React.FC = () => {
                   flex: 1
                 },
                 {
+                  field: 'notes',
+                  headerName: 'Détails',
+                  flex: 1.2,
+                
+                  renderCell: (params: GridRenderCellParams) => {
+                    const notes = params.value || '';
+                    const transactionType = params.row.transaction_type;
+                    
+                    // Truncate long text for display
+                    const truncateText = (text: string, maxLength: number = 80) => {
+                      if (!text) return '-';
+                      return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+                    };
+                    
+                    // For inventory adjustments, show more details with tooltip
+                    if (transactionType === 'inventory' && notes) {
+                      return (
+                        <Tooltip 
+                          title={
+                            <Box sx={{ maxWidth: 400, p: 1 }}>
+                              <Typography variant="subtitle2" gutterBottom color="inherit">
+                                Détails de l'inventaire
+                              </Typography>
+                              <Typography variant="body2" color="inherit" sx={{ whiteSpace: 'pre-line' }}>
+                                {notes}
+                              </Typography>
+                            </Box>
+                          }
+                          arrow
+                          placement="top"
+                          enterDelay={300}
+                          leaveDelay={200}
+                        >
+                          <Box sx={{ 
+                            fontSize: '0.875rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            textAlign: 'center',
+                            width: '100%',
+                            cursor: 'help',
+                            '&:hover': {
+                              backgroundColor: 'action.hover',
+                              borderRadius: 1,
+                              transition: 'background-color 0.2s'
+                            }
+                          }}>
+                            <Typography variant="body2" sx={{ 
+                              fontSize: 'inherit', 
+                              color: 'text.secondary',
+                              maxWidth: '100%',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {truncateText(notes, 50)}
+                            </Typography>
+                          </Box>
+                        </Tooltip>
+                      );
+                    }
+                    
+                    // For other transaction types, show simple tooltip if there are notes
+                    if (notes && notes !== '-') {
+                      return (
+                        <Tooltip 
+                          title={notes}
+                          arrow
+                          placement="top"
+                          enterDelay={500}
+                        >
+                          <Box sx={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            textAlign: 'center',
+                            width: '100%',
+                            cursor: 'help',
+                            '&:hover': {
+                              backgroundColor: 'action.hover',
+                              borderRadius: 1,
+                              transition: 'background-color 0.2s'
+                            }
+                          }}>
+                            <Typography variant="body2" sx={{ 
+                              fontSize: '0.875rem', 
+                              color: 'text.secondary',
+                              maxWidth: '100%',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {truncateText(notes, 60)}
+                            </Typography>
+                          </Box>
+                        </Tooltip>
+                      );
+                    }
+                    
+                    return (
+                      <Box sx={{ 
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        width: '100%'
+                      }}>
+                        <Typography variant="body2" sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
+                          {notes || '-'}
+                        </Typography>
+                      </Box>
+                    );
+                  }
+                },
+                {
                   field: 'quantity_in',
                   headerName: 'Entrée',
                   flex: 0.7,
                   align: 'right',
                   headerAlign: 'right',
-                  valueFormatter: (params) => {
-                    return params === null || params === undefined ? '' : params;
+                  renderCell: (params: GridRenderCellParams) => {
+                    if (params.value === null || params.value === undefined || params.value === '') {
+                      return '';
+                    }
+                    // Use unit_symbol directly from the row data
+                    const unitSymbol = params.row.unit_symbol || '';
+                    return (
+                      <Box sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'flex-end',
+                        color: 'success.main',
+                        fontWeight: 'medium'
+                      }}>
+                        +{params.value} {unitSymbol}
+                      </Box>
+                    );
                   }
                 },
                 {
@@ -2155,8 +2307,23 @@ const InventoryManagement: React.FC = () => {
                   flex: 0.7,
                   align: 'right',
                   headerAlign: 'right',
-                  valueFormatter: (params) => {
-                    return params === null || params === undefined ? '' : params;
+                  renderCell: (params: GridRenderCellParams) => {
+                    if (params.value === null || params.value === undefined || params.value === '') {
+                      return '';
+                    }
+                    // Use unit_symbol directly from the row data
+                    const unitSymbol = params.row.unit_symbol || '';
+                    return (
+                      <Box sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'flex-end',
+                        color: 'error.main',
+                        fontWeight: 'medium'
+                      }}>
+                        -{params.value} {unitSymbol}
+                      </Box>
+                    );
                   }
                 },
                 {
@@ -2165,8 +2332,27 @@ const InventoryManagement: React.FC = () => {
                   flex: 0.7,
                   align: 'right',
                   headerAlign: 'right',
-                  valueFormatter: (params) => {
-                    return params === null || params === undefined ? ''                    : params;
+                  renderCell: (params: GridRenderCellParams) => {
+                    if (params.value === null || params.value === undefined || params.value === '') {
+                      return '';
+                    }
+                    // Balance should show FG instead of unit symbol
+                    const isPositive = parseFloat(params.value) >= 0;
+                    return (
+                      <Box sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'flex-end',
+                        color: isPositive ? 'text.primary' : 'error.main',
+                        fontWeight: 'bold',
+                        backgroundColor: isPositive ? 'transparent' : 'error.light',
+                        px: isPositive ? 0 : 1,
+                        py: isPositive ? 0 : 0.5,
+                        borderRadius: isPositive ? 0 : 1
+                      }}>
+                        {parseFloat(params.value).toLocaleString('fr-FR')} FG
+                      </Box>
+                    );
                   }
                 }
               ]}

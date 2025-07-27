@@ -41,7 +41,7 @@ import { Zone, Supplier } from '../../interfaces/business';
 
 // Currency formatting function
 const formatCurrency = (amount: number | null | undefined): string => {
-  if (amount === null || amount === undefined) return '0 GNF';
+  if (amount === null || amount === undefined || isNaN(amount)) return '0 GNF';
   return new Intl.NumberFormat('fr-GN', {
     style: 'currency',
     currency: 'GNF',
@@ -61,6 +61,7 @@ export type InventoryDialogStatus =
 
 // Item structure used by all operations
 export interface InventoryDialogItem {
+  id?: number; // Optional ID for existing items (used during updates)
   product: number;
   quantity: number;
   unit_price: number;
@@ -392,9 +393,13 @@ const InventoryDialog: React.FC<InventoryDialogProps> = ({
                 getOptionLabel={(option) => option.name}
                 value={formData.currentProduct}
                 onChange={(event, newValue) => {
+                  // Check if this product already exists in the items list
+                  const existingItem = formData.items.find(item => item.product === newValue?.id);
+                  
                   onFormDataChange({
                     currentProduct: newValue,
-                    currentUnitPrice: newValue?.purchase_price ?? 0,
+                    currentUnitPrice: existingItem?.unit_price ?? newValue?.purchase_price ?? 0,
+                    currentQuantity: existingItem?.quantity ?? 1,
                   });
                 }}
                 renderInput={(params) => (
@@ -479,9 +484,9 @@ const InventoryDialog: React.FC<InventoryDialogProps> = ({
                     {formData.items.map((item, index) => (
                       <TableRow key={index}>
                         <TableCell>{getProductName(item.product)}</TableCell>
-                        <TableCell align="right">{item.quantity}</TableCell>
-                        <TableCell align="right">{formatCurrency(item.unit_price)}</TableCell>
-                        <TableCell align="right">{formatCurrency(item.total_price)}</TableCell>
+                        <TableCell align="right">{Number(item.quantity) || 0}</TableCell>
+                        <TableCell align="right">{formatCurrency(Number(item.unit_price) || 0)}</TableCell>
+                        <TableCell align="right">{formatCurrency(Number(item.total_price) || 0)}</TableCell>
                         <TableCell align="right">
                           <IconButton 
                             size="small" 

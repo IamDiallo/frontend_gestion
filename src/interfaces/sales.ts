@@ -98,6 +98,7 @@ export interface Quote {
   date: string;
   expiry_date: string;
   status: 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
+  is_converted?: boolean;
   subtotal: number;
   tax_amount: number;
   total_amount: number;

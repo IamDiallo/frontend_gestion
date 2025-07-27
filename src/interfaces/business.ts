@@ -70,6 +70,7 @@ export interface AccountStatement {
   debit: number;
   credit: number;
   balance: number;
+  account: number; // Account ID that this statement belongs to
   account_name?: string; // Added to match backend serializer
 }
 
@@ -90,4 +91,28 @@ export interface ClientDeposit {
   payment_method: {id: number, name: string} | null;
   date: string;
   description: string;
+}
+
+// Treasury-specific interfaces
+export interface ActualClientBalanceResponse {
+  client_id: number;
+  client_name: string;
+  total_sales: number;
+  total_account_credits: number;
+  sale_payments_from_account: number;
+  balance: number;
+  sales_count: number;
+  payments_count: number;
+  outstanding_sales?: OutstandingSale[];
+  statements?: AccountStatement[];
+}
+
+export interface AccountTransfer {
+  id?: number;
+  from_account: number;
+  to_account: number;
+  amount: number;
+  transfer_date: string;
+  reference_number: string;
+  notes?: string;
 }

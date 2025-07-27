@@ -27,17 +27,25 @@ import WarningIcon from '@mui/icons-material/Warning';
 
 import { useSnackbar } from 'notistack';
 import { ClientsAPI, SettingsAPI, TreasuryAPI, SalesAPI, AccountsAPI } from '../services/api';
-import { Client, Account, ClientDeposit, TabPanelProps, ClientAccountBalance, OutstandingSale, AccountStatement } from '../interfaces/business';
-import { AccountTransfer } from '../interfaces/financial';
+import { Client, Account, ClientDeposit, TabPanelProps, OutstandingSale, AccountStatement, ActualClientBalanceResponse, AccountTransfer } from '../interfaces/business';
+import { 
+  formatCurrency, 
+  formatDate, 
+  getPaymentStatusColor, 
+  getPaymentStatusLabel,
+  filterOutstandingSales,
+  mapStatementsForGrid,
+  getTransactionTypeChipStyles,
+  validateTransferForm,
+  validateDepositForm
+} from '../utils/treasuryUtils';
+
 import { 
   validateDecimalInput, 
   formatNumberDisplay, 
   getValidationError,
-  validateAmountInput,
-  getAmountValidationError 
+  validateAmountInput
 } from '../utils/inputValidation';
-
-
 
 // Styled components for better visuals
 const StyledPaper = styled(Paper)(() => ({
@@ -88,7 +96,7 @@ const Treasury = () => {
   // Client account management state
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [clientBalanceData, setClientBalanceData] = useState<ClientAccountBalance | null>(null);
+  const [clientBalanceData, setClientBalanceData] = useState<ActualClientBalanceResponse | null>(null);
   const [loadingClientData, setLoadingClientData] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
   // Add client pagination state
@@ -236,21 +244,10 @@ const Treasury = () => {
       setProcessingTransfer(true);
       setError(null);
 
-      // Validate required fields
-      if (!accountTransfer.from_account) {
-        setError('Veuillez sélectionner le compte source');
-        return;
-      }
-      if (!accountTransfer.to_account) {
-        setError('Veuillez sélectionner le compte destination');
-        return;
-      }
-      if (accountTransfer.from_account === accountTransfer.to_account) {
-        setError('Le compte source et destination doivent être différents');
-        return;
-      }
-      if (!accountTransfer.amount || accountTransfer.amount <= 0) {
-        setError('Le montant doit être supérieur à 0');
+      // Validate required fields using utility function
+      const validationError = validateTransferForm(accountTransfer);
+      if (validationError) {
+        setError(validationError);
         return;
       }
 
@@ -350,12 +347,12 @@ const Treasury = () => {
       setError(null);
         
       // Check if this will be a credit payment
-      const isCreditPayment = clientBalanceData && clientBalanceData.client.current_balance < paymentAmount;
+      const isCreditPayment = clientBalanceData && clientBalanceData.balance < paymentAmount;
       
       // If it's a credit payment, confirm with the user
       if (isCreditPayment) {
         const creditAmount = clientBalanceData 
-          ? Math.abs(clientBalanceData.client.current_balance - paymentAmount)
+          ? Math.abs(clientBalanceData.balance - paymentAmount)
           : paymentAmount;
           
         if (!window.confirm(`ATTENTION: Ce paiement dépassera le solde disponible du client et créera un crédit de ${formatCurrency(creditAmount)}. Voulez-vous continuer?`)) {
@@ -454,7 +451,7 @@ const Treasury = () => {
       // Update the client balance data
       if (selectedClient) {        // Save previous balance for animation
         if (clientBalanceData) {
-          setPreviousBalance(clientBalanceData.client.current_balance);
+          setPreviousBalance(clientBalanceData.balance);
         }
         // Reload client data to get updated balance
         loadClientAccountData(selectedClient.id);
@@ -476,14 +473,6 @@ const Treasury = () => {
     setPaymentDescription('');
   };
 
-  // Format currency
-  const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat('fr-GN', {
-      style: 'currency',
-      currency: 'GNF',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
   // Handle client pagination
   const handleChangeClientPage = (event: unknown, newPage: number) => {
     setClientPage(newPage);
@@ -496,14 +485,49 @@ const Treasury = () => {
   const loadClientAccountData = async (clientId: number) => {
     try {
       setLoadingClientData(true);
-      setError(null);      // Store previous balance before loading new data
-      const prevBalance = clientBalanceData ? clientBalanceData.client.current_balance : null;
-        const data = await TreasuryAPI.getClientBalance(clientId) as ClientAccountBalance;
-      setClientBalanceData(data);
+      setError(null);      
+      // Store previous balance before loading new data
+      const prevBalance = clientBalanceData ? clientBalanceData.balance : null;
+      
+      // First get the client data to get the account ID
+      const clientData = selectedClient || await ClientsAPI.getById(clientId);
+      const clientAccountId = clientData?.account;
+      
+      console.log('Loading data for client:', clientId, 'account:', clientAccountId);
+      console.log('Client data:', clientData);
+      
+      // Fetch client balance, account statements, and sales in parallel
+      const [balanceData, statementsData, salesData] = await Promise.all([
+        TreasuryAPI.getClientBalance(clientId),
+        // Filter statements by client's account ID directly at API level
+        clientAccountId ? TreasuryAPI.getAccountStatements(clientAccountId) : Promise.resolve([]),
+        SalesAPI.getAll() // Get all sales to filter for outstanding ones
+      ]);
+      
+      console.log('Fetched statements for account', clientAccountId, ':', statementsData);
+      
+      // No need to filter statements anymore since we already filtered at API level
+      const clientStatements = statementsData as AccountStatement[];
+      
+      console.log('Final client statements:', clientStatements.length, 'statements');
+      
+      // Filter outstanding sales for the selected client (unpaid or partially paid)
+      // Using any type because backend returns additional fields like paid_amount, remaining_amount
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const outstandingSales: OutstandingSale[] = filterOutstandingSales(salesData as any[], clientId);
+      
+      // Combine the data
+      const combinedData = {
+        ...(balanceData as ActualClientBalanceResponse),
+        statements: clientStatements,
+        outstanding_sales: outstandingSales
+      } as ActualClientBalanceResponse;
+      
+      setClientBalanceData(combinedData);
       setLoadingClientData(false);
         // If previous balance exists and is different from new balance, show feedback
-      if (prevBalance !== null && data.client.current_balance !== prevBalance) {
-        showBalanceUpdateFeedback(prevBalance, data.client.current_balance);
+      if (prevBalance !== null && (balanceData as ActualClientBalanceResponse).balance !== prevBalance) {
+        showBalanceUpdateFeedback(prevBalance, (balanceData as ActualClientBalanceResponse).balance);
       }
     } catch (err) {
       console.error('Error loading client account data:', err);
@@ -533,32 +557,19 @@ const Treasury = () => {
     try {
       setError(null);
 
-      // Validate required fields
-      if (!newDeposit.client) {
-        setError('Veuillez sélectionner un client');
-        return;
-      }
-
-      if (!newDeposit.account) {
-        setError('Veuillez sélectionner un compte pour le dépôt');
-        return;
-      }
-
-      if (!newDeposit.payment_method) {
-        setError('Veuillez sélectionner une méthode de paiement');
-        return;
-      }
-
-      if (newDeposit.amount <= 0) {
-        setError('Le montant doit être supérieur à 0');
+      // Validate required fields using utility function
+      const validationError = validateDepositForm(newDeposit);
+      if (validationError) {
+        setError(validationError);
         return;
       }      // Store current balance for comparison
-      const currentBalance = clientBalanceData?.client.current_balance || 0;      // Prepare data for API
+      const currentBalance = clientBalanceData?.balance || 0;      // Prepare data for API
       const depositData = {
         reference: `DEP-${Date.now()}`, // Generate unique reference
         client: newDeposit.client,
         account: newDeposit.account,
         amount: newDeposit.amount,
+        allocated_amount: newDeposit.amount, // Set allocated_amount to the full amount
         payment_method: newDeposit.payment_method?.id || null,
         date: newDeposit.date,
         description: newDeposit.description || 'Dépôt sur compte client'
@@ -598,49 +609,6 @@ const Treasury = () => {
     } catch (err) {
       console.error('Error creating deposit:', err);
       setError('Erreur lors de la création du dépôt. Veuillez réessayer.');
-    }
-  };
-
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    try {
-      return new Date(dateString).toLocaleDateString('fr-FR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      });
-    } catch (e) {
-      return dateString;
-    }
-  };
-
-  // Get payment status chip color
-  const getPaymentStatusColor = (status: string) => {
-    switch (status) {
-      case 'unpaid':
-        return 'error';
-      case 'partially_paid':
-        return 'warning';
-      case 'paid':
-        return 'success';
-      default:
-        return 'default';
-    }
-  };
-
-  // Get payment status label
-  const getPaymentStatusLabel = (status: string) => {
-    switch (status) {
-      case 'unpaid':
-        return 'Non payé';
-      case 'partially_paid':
-        return 'Partiellement payé';
-      case 'paid':
-        return 'Payé';
-      case 'overpaid':
-        return 'Surpayé';
-      default:
-        return status;
     }
   };
 
@@ -725,15 +693,6 @@ const Treasury = () => {
                 sx={{ borderRadius: 2 }}
               >
                 Retour
-              </Button>
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<AddCircleIcon />}
-                onClick={() => setShowDepositModal(true)}
-                sx={{ borderRadius: 2 }}
-              >
-                Nouveau dépôt
               </Button>
             </Stack>
           )}
@@ -877,75 +836,148 @@ const Treasury = () => {
               </>
             ) : (
               <>
-                <Grid item xs={12} md={4}>
-                  <Paper sx={{ p: 2, height: '100%' }} elevation={2}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-                        {selectedClient.name.charAt(0).toUpperCase()}
-                      </Avatar>
-                      <Box>
-                        <Typography variant="h6">
-                          {selectedClient.name}
-                        </Typography>
-                        {selectedClient.contact_person && (
-                          <Typography variant="body2" color="text.secondary">
-                            {selectedClient.contact_person}
+                {/* Single row layout with merged client info and balance */}
+                <Grid item xs={12}>
+                  {loadingClientData ? (
+                    <Card sx={{ mb: 3 }} elevation={2}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                          <CircularProgress />
+                          <Typography variant="body1" sx={{ ml: 2 }}>
+                            Chargement des données du client...
                           </Typography>
-                        )}
-                      </Box>
-                    </Box>
-                    
-                    <Divider sx={{ my: 2 }} />
-                    
-                    <Box sx={{ mb: 2 }}>
-                      <Typography variant="body2" color="text.secondary" gutterBottom>
-                        Contact
-                      </Typography>
-                      
-                      {selectedClient.phone && (
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          📞 {selectedClient.phone}
-                        </Typography>
-                      )}
-                      
-                      {selectedClient.email && (
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          ✉️ {selectedClient.email}
-                        </Typography>
-                      )}
-                      
-                      {selectedClient.address && (
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          🏠 {selectedClient.address}
-                        </Typography>
-                      )}
-                    </Box>
-                    
-                    <Divider sx={{ my: 2 }} />
-
-                    <Button
-                      fullWidth
-                      variant="contained"
-                      color="primary"
-                      startIcon={<AttachMoneyIcon />}
-                      onClick={() => setShowDepositModal(true)}
-                      sx={{ mb: 2 }}
-                    >
-                      Nouveau dépôt
-                    </Button>
-                    
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      startIcon={<PrintIcon />}
-                      sx={{ mb: 2 }}
-                    >
-                      Imprimer relevé
-                    </Button>
-                  </Paper>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Card sx={{ mb: 3 }} elevation={2}>
+                      <CardContent>
+                        <Grid container alignItems="center" spacing={3}>
+                          {/* Client Info Section */}
+                          <Grid item xs={12} md={4}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                              <Avatar sx={{ bgcolor: 'primary.main', mr: 2, width: 56, height: 56 }}>
+                                {selectedClient.name.charAt(0).toUpperCase()}
+                              </Avatar>
+                              <Box>
+                                <Typography variant="h6" fontWeight="bold">
+                                  {selectedClient.name}
+                                </Typography>
+                                {selectedClient.contact_person && (
+                                  <Typography variant="body2" color="text.secondary">
+                                    {selectedClient.contact_person}
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Box>
+                            
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                              {selectedClient.phone && (
+                                <Chip 
+                                  icon={<Typography>📞</Typography>} 
+                                  label={selectedClient.phone} 
+                                  variant="outlined" 
+                                  size="small"
+                                />
+                              )}
+                              {selectedClient.email && (
+                                <Chip 
+                                  icon={<Typography>✉️</Typography>} 
+                                  label={selectedClient.email} 
+                                  variant="outlined" 
+                                  size="small"
+                                />
+                              )}
+                              {selectedClient.address && (
+                                <Chip 
+                                  icon={<Typography>🏠</Typography>} 
+                                  label={selectedClient.address} 
+                                  variant="outlined" 
+                                  size="small"
+                                />
+                              )}
+                            </Box>
+                          </Grid>
+                        
+                        {/* Balance Section */}
+                        <Grid item xs={12} md={4}>
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography variant="body2" color="text.secondary" gutterBottom>
+                              Solde actuel
+                            </Typography>
+                            <Grow
+                              in={true}
+                              style={{ transformOrigin: '0 0 0' }}
+                              {...(balanceChangeHighlight ? { timeout: 1000 } : {})}
+                            >
+                              <Typography
+                                variant="h4" 
+                                sx={{ 
+                                  fontWeight: 'bold',
+                                  color: clientBalanceData?.balance >= 0 ? 'success.main' : 'error.main',
+                                  transition: 'color 0.5s ease',
+                                  animation: balanceChangeHighlight ? 'pulse 2s infinite' : 'none',
+                                  '@keyframes pulse': {
+                                    '0%': {
+                                      opacity: 1,
+                                    },
+                                    '50%': {
+                                      opacity: 0.6,
+                                    },
+                                    '100%': {
+                                      opacity: 1,
+                                    },
+                                  },
+                                }}
+                              >
+                                {clientBalanceData ? formatCurrency(clientBalanceData.balance) : formatCurrency(0)}
+                              </Typography>
+                            </Grow>
+                            {previousBalance !== null && clientBalanceData && previousBalance !== clientBalanceData.balance && (
+                              <Slide direction="up" in={balanceChangeHighlight} mountOnEnter unmountOnExit>
+                                <Typography variant="caption" 
+                                  sx={{ 
+                                    color: clientBalanceData.balance > previousBalance ? 'success.main' : 'error.main',
+                                    fontWeight: 'medium'
+                                  }}
+                                >
+                                  {clientBalanceData.balance > previousBalance ? '↑' : '↓'} 
+                                  {formatCurrency(Math.abs(clientBalanceData.balance - previousBalance))}
+                                </Typography>
+                              </Slide>
+                            )}
+                          </Box>
+                        </Grid>
+                        
+                        {/* Action Buttons Section */}
+                        <Grid item xs={12} md={4}>
+                          <Stack direction="row" spacing={1} justifyContent={{ xs: 'center', md: 'flex-end' }}>
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              startIcon={<AttachMoneyIcon />}
+                              onClick={() => setShowDepositModal(true)}
+                              size="small"
+                            >
+                              Nouveau dépôt
+                            </Button>
+                            <Button
+                              variant="outlined"
+                              startIcon={<PrintIcon />}
+                              size="small"
+                            >
+                              Imprimer relevé
+                            </Button>
+                          </Stack>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                  )}
                 </Grid>
-                
-                <Grid item xs={12} md={8}>
+
+                {/* Data sections */}
+                <Grid item xs={12}>
                   {loadingClientData ? (
                     <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                       <CircularProgress />
@@ -956,68 +988,13 @@ const Treasury = () => {
                     </Alert>
                   ) : clientBalanceData ? (
                     <Box>
-                      <Card sx={{ mb: 3 }} elevation={2}>
-                        <CardContent>
-                          <Grid container alignItems="center" spacing={2}>
-                            <Grid item xs={12} md={6}>                              <Typography variant="subtitle1" fontWeight="medium">
-                                Compte: {clientBalanceData.client.account_name}
-                              </Typography>
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                              <Box sx={{ textAlign: { xs: 'left', md: 'right' } }}>
-                                <Typography variant="body2" color="text.secondary" gutterBottom>
-                                  Solde actuel
-                                </Typography>
-                                <Grow
-                                  in={true}
-                                  style={{ transformOrigin: '0 0 0' }}
-                                  {...(balanceChangeHighlight ? { timeout: 1000 } : {})}
-                                >
-                                  <Typography                                    variant="h4" 
-                                    sx={{ 
-                                      fontWeight: 'bold',
-                                      color: clientBalanceData.client.current_balance >= 0 ? 'success.main' : 'error.main',
-                                      transition: 'color 0.5s ease',
-                                      animation: balanceChangeHighlight ? 'pulse 2s infinite' : 'none',
-                                      '@keyframes pulse': {
-                                        '0%': {
-                                          opacity: 1,
-                                        },
-                                        '50%': {
-                                          opacity: 0.6,
-                                        },
-                                        '100%': {
-                                          opacity: 1,
-                                        },
-                                      },
-                                    }}
-                                  >
-                                    {formatCurrency(clientBalanceData.client.current_balance)}
-                                  </Typography>
-                                </Grow>                                {previousBalance !== null && previousBalance !== clientBalanceData.client.current_balance && (
-                                  <Slide direction="up" in={balanceChangeHighlight} mountOnEnter unmountOnExit>
-                                    <Typography variant="caption" 
-                                      sx={{ 
-                                        color: clientBalanceData.client.current_balance > previousBalance ? 'success.main' : 'error.main',
-                                        fontWeight: 'medium'
-                                      }}
-                                    >                                      {clientBalanceData.client.current_balance > previousBalance ? '↑' : '↓'} 
-                                      {formatCurrency(Math.abs(clientBalanceData.client.current_balance - previousBalance))}
-                                    </Typography>
-                                  </Slide>
-                                )}
-                              </Box>
-                            </Grid>
-                          </Grid>
-                        </CardContent>
-                      </Card>
 
                       {clientBalanceData.outstanding_sales && clientBalanceData.outstanding_sales.length > 0 && (
-                        <Paper sx={{ mb: 3, overflow: 'hidden', height: 420 }} elevation={2}>
+                        <Paper sx={{ mb: 3, overflow: 'hidden' }} elevation={2}>
                           <Box sx={{ bgcolor: 'warning.light', px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <Typography variant="subtitle1" fontWeight="bold" color="warning.contrastText">
                               <WarningIcon sx={{ fontSize: 20, mr: 1, verticalAlign: 'text-bottom' }} />
-                              Ventes non soldées
+                              Ventes non soldées ({clientBalanceData.outstanding_sales?.length || 0})
                             </Typography>
                             <Box>
                               <Tooltip title="Exporter les données">
@@ -1033,9 +1010,12 @@ const Treasury = () => {
                             </Box>
                           </Box>
                           
-                          <Box sx={{ height: 360, width: '100%' }}>
+                          <Box sx={{ 
+                            height: Math.min(Math.max(50, clientBalanceData.outstanding_sales.length * 60 + 160), 300), 
+                            width: '100%' 
+                          }}>
                             <DataGrid
-                              rows={clientBalanceData.outstanding_sales.map(sale => ({
+                              rows={(clientBalanceData.outstanding_sales || []).map((sale: OutstandingSale) => ({
                                 id: sale.id,
                                 reference: sale.reference,
                                 date: formatDate(sale.date),
@@ -1121,7 +1101,7 @@ const Treasury = () => {
                                 { 
                                   field: 'actions', 
                                   headerName: 'Actions', 
-                                  width: 100,
+                                  width: 90,
                                   align: 'center',
                                   headerAlign: 'center',
                                   sortable: false,
@@ -1144,7 +1124,7 @@ const Treasury = () => {
                                           setSelectedSaleForPayment(saleWithCorrectBalance);
                                           
                                           if (clientBalanceData) {
-                                            const availableBalance = clientBalanceData.client.current_balance;
+                                            const availableBalance = clientBalanceData.balance;
                                             if (availableBalance > 0 && availableBalance < actualBalance) {
                                               setPaymentAmount(availableBalance);
                                             } else {
@@ -1156,6 +1136,13 @@ const Treasury = () => {
                                           
                                           setPaymentDescription(`Paiement pour la vente ${sale.reference}`);
                                           setShowPaymentModal(true);
+                                        }}
+                                        sx={{
+                                          bgcolor: 'primary.main',
+                                          color: 'white',
+                                          '&:hover': {
+                                            bgcolor: 'primary.dark',
+                                          }
                                         }}
                                       >
                                         <PaymentIcon fontSize="small" />
@@ -1203,11 +1190,12 @@ const Treasury = () => {
                             />
                           </Box>
                         </Paper>
-                      )}                      <Paper sx={{ mb: 3, overflow: 'hidden', height: 520 }} elevation={2}>
+                      )}
+                      <Paper sx={{ mb: 3, overflow: 'hidden' }} elevation={2}>
                         <Box sx={{ bgcolor: 'primary.light', px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <Typography variant="subtitle1" fontWeight="bold" color="primary.contrastText">
                             <ReceiptIcon sx={{ fontSize: 20, mr: 1, verticalAlign: 'text-bottom' }} />
-                            Historique des transactions
+                            Historique des transactions ({clientBalanceData.statements?.length || 0})
                           </Typography>
                           <Box>
                             <Tooltip title="Exporter les données">
@@ -1223,20 +1211,13 @@ const Treasury = () => {
                           </Box>
                         </Box>
                         
-                        <Box sx={{ height: 460, width: '100%' }}>
+                        <Box sx={{ 
+                          height: Math.min(Math.max(350, (clientBalanceData.statements?.length || 0) * 55 + 180), 400), 
+                          width: '100%' 
+                        }}>
                           {clientBalanceData.statements && clientBalanceData.statements.length > 0 ? (
                             <DataGrid
-                              rows={clientBalanceData.statements.map(statement => ({
-                                id: statement.id,
-                                date: formatDate(statement.date),
-                                rawDate: statement.date, // For sorting
-                                reference: statement.reference,
-                                type: statement.transaction_type_display,
-                                description: statement.description,
-                                debit: statement.debit,
-                                credit: statement.credit,
-                                balance: statement.balance
-                              }))}
+                              rows={mapStatementsForGrid(clientBalanceData.statements)}
                               columns={[
                                 { 
                                   field: 'date', 
@@ -1254,24 +1235,16 @@ const Treasury = () => {
                                   field: 'type', 
                                   headerName: 'Type', 
                                   width: 180,
-                                  renderCell: (params: GridRenderCellParams) => (
-                                    <Chip 
-                                      label={params.value}
-                                      size="small"
-                                      sx={{ 
-                                        bgcolor: 
-                                          params.value.toLowerCase().includes('dépôt') ? 'rgba(46, 125, 50, 0.1)' :
-                                          params.value.toLowerCase().includes('paiement') ? 'rgba(25, 118, 210, 0.1)' :
-                                          'rgba(156, 39, 176, 0.1)',
-                                        color: 
-                                          params.value.toLowerCase().includes('dépôt') ? 'success.main' :
-                                          params.value.toLowerCase().includes('paiement') ? 'primary.main' :
-                                          'secondary.main',
-                                        borderRadius: '4px',
-                                        fontWeight: 500
-                                      }}
-                                    />
-                                  )
+                                  renderCell: (params: GridRenderCellParams) => {
+                                    const value = params.value || '';
+                                    return (
+                                      <Chip 
+                                        label={value}
+                                        size="small"
+                                        sx={getTransactionTypeChipStyles(value)}
+                                      />
+                                    );
+                                  }
                                 },
                                 { field: 'description', headerName: 'Description', flex: 1, minWidth: 200 },
                                 { 
@@ -1362,13 +1335,20 @@ const Treasury = () => {
                               pageSizeOptions={[5, 10, 25, 50]}
                             />
                           ) : (
-                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                              <MoneyOffIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
-                              <Typography variant="h6" color="text.secondary" gutterBottom>
-                                Aucune transaction trouvée
+                            <Box sx={{ 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              alignItems: 'center', 
+                              justifyContent: 'center', 
+                              height: '100%',
+                              color: 'text.secondary'
+                            }}>
+                              <ReceiptIcon sx={{ fontSize: 60, mb: 2, opacity: 0.5 }} />
+                              <Typography variant="h6" gutterBottom>
+                                Aucune transaction
                               </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                Ce client n'a pas encore de transactions dans le système.
+                              <Typography variant="body2" sx={{ textAlign: 'center', maxWidth: 300 }}>
+                                Les transactions de ce client apparaîtront ici une fois qu'elles seront effectuées
                               </Typography>
                             </Box>
                           )}
@@ -1565,7 +1545,7 @@ const Treasury = () => {
                 </Alert>
               )}
               
-              <Paper sx={{ height: 600, width: '100%' }} elevation={2}>
+              <Paper sx={{ width: '100%' }} elevation={2}>
                 <Box sx={{ bgcolor: 'primary.light', px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="subtitle1" fontWeight="bold" color="primary.contrastText">
                     <ReceiptIcon sx={{ fontSize: 20, mr: 1, verticalAlign: 'text-bottom' }} />
@@ -1576,8 +1556,12 @@ const Treasury = () => {
                   </Typography>
                 </Box>
                 
+                <Box sx={{ 
+                  height: Math.min(Math.max(400, accountMovements.length * 55 + 200), 800), 
+                  width: '100%' 
+                }}>
                 {loadingMovements ? (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100% - 60px)' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
                     <CircularProgress />
                   </Box>
                 ) : accountMovements.length > 0 ? (
@@ -1724,7 +1708,7 @@ const Treasury = () => {
                     pageSizeOptions={[10, 15, 25, 50]}
                   />
                 ) : (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 'calc(100% - 60px)' }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                     <MoneyOffIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
                     <Typography variant="h6" color="text.secondary" gutterBottom>
                       Aucun mouvement trouvé
@@ -1737,6 +1721,7 @@ const Treasury = () => {
                     </Typography>
                   </Box>
                 )}
+                </Box>
               </Paper>
             </Grid>
           </Grid>
@@ -2125,13 +2110,13 @@ const Treasury = () => {
                   p: 2, 
                   mb: 3, 
                   borderRadius: 1, 
-                  borderColor: clientBalanceData && clientBalanceData.client.current_balance < 0 ? 'error.main' : 'divider',
+                  borderColor: clientBalanceData && clientBalanceData.balance < 0 ? 'error.main' : 'divider',
                   backgroundColor: 'background.paper',
-                  borderWidth: clientBalanceData && clientBalanceData.client.current_balance < 0 ? 2 : 1
+                  borderWidth: clientBalanceData && clientBalanceData.balance < 0 ? 2 : 1
                 }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <AccountBalanceWalletIcon sx={{ mr: 1, color: clientBalanceData && clientBalanceData.client.current_balance >= 0 ? 'success.main' : 'error.main' }} />
+                  <AccountBalanceWalletIcon sx={{ mr: 1, color: clientBalanceData && clientBalanceData.balance >= 0 ? 'success.main' : 'error.main' }} />
                   <Typography variant="h6" color="primary" sx={{ fontWeight: 'medium' }}>
                     Compte client
                   </Typography>
@@ -2145,13 +2130,13 @@ const Treasury = () => {
                     <Typography 
                       variant="h6" 
                       fontWeight="medium"
-                      color={clientBalanceData && clientBalanceData.client.current_balance >= 0 ? 'success.main' : 'error.main'}
+                      color={clientBalanceData && clientBalanceData.balance >= 0 ? 'success.main' : 'error.main'}
                     >
-                      {clientBalanceData ? formatCurrency(clientBalanceData.client.current_balance) : 'Chargement...'}
+                      {clientBalanceData ? formatCurrency(clientBalanceData.balance) : 'Chargement...'}
                     </Typography>
                   </Grid>
                   
-                  {(!clientBalanceData || clientBalanceData.client.current_balance <= 0) && (
+                  {(!clientBalanceData || clientBalanceData.balance <= 0) && (
                     <Grid item xs={12} sm={6}>
                       <Typography variant="caption" color="error" sx={{ display: 'flex', alignItems: 'center' }}>
                         <WarningIcon fontSize="small" sx={{ mr: 0.5 }} />
@@ -2176,25 +2161,26 @@ const Treasury = () => {
                     required
                     value={formatNumberDisplay(paymentAmount)}
                     onChange={(e) => {
-                      const maxValue = selectedSaleForPayment ? selectedSaleForPayment.balance : undefined;
-                      const newValue = validateAmountInput(e.target.value, paymentAmount, maxValue);
+                      // For account payments, don't restrict the amount - allow credit payments
+                      // Users should be able to enter any amount up to the sale balance
+                      const newValue = validateAmountInput(e.target.value, paymentAmount); // Remove maxValue restriction
                       setPaymentAmount(newValue);
                     }}
-                    error={paymentAmount <= 0 || (selectedSaleForPayment && paymentAmount > selectedSaleForPayment.balance)}
-                    helperText={getAmountValidationError(paymentAmount, selectedSaleForPayment?.balance)}
+                    error={paymentAmount <= 0}
+                    helperText={paymentAmount <= 0 ? "Le montant doit être supérieur à 0" : ""}
                     InputProps={{ 
                       startAdornment: (
                         <InputAdornment position="start">
                           <MoneyIcon color={
-                            clientBalanceData && clientBalanceData.client.current_balance < paymentAmount 
+                            clientBalanceData && clientBalanceData.balance < paymentAmount 
                               ? "warning" 
                               : "primary"
                           } />
                         </InputAdornment>
                       )
                     }}
-                    color={clientBalanceData && clientBalanceData.client.current_balance < paymentAmount ? "warning" : (
-                      selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance ? "info" : "primary"
+                    color={clientBalanceData && clientBalanceData.balance < paymentAmount ? "warning" : (
+                      selectedSaleForPayment && paymentAmount < selectedSaleForPayment.total_amount ? "info" : "primary"
                     )}
                   />
                   
@@ -2205,15 +2191,15 @@ const Treasury = () => {
                       sx={{ 
                         p: 2,
                         borderRadius: 1,
-                        borderColor: clientBalanceData && clientBalanceData.client.current_balance < paymentAmount 
+                        borderColor: clientBalanceData && clientBalanceData.balance < paymentAmount 
                           ? 'warning.main' 
-                          : (selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance 
+                          : (selectedSaleForPayment && paymentAmount < selectedSaleForPayment.total_amount 
                             ? 'info.main' 
                             : 'success.main'),
                         borderWidth: 2,
-                        backgroundColor: clientBalanceData && clientBalanceData.client.current_balance < paymentAmount
+                        backgroundColor: clientBalanceData && clientBalanceData.balance < paymentAmount
                           ? 'rgba(237, 108, 2, 0.08)'  // warning light background
-                          : (selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance
+                          : (selectedSaleForPayment && paymentAmount < selectedSaleForPayment.total_amount
                             ? 'rgba(3, 169, 244, 0.08)'  // info light background
                             : 'rgba(46, 125, 50, 0.08)'),  // success light background
                         boxShadow: 1
@@ -2221,10 +2207,10 @@ const Treasury = () => {
                     >
                       <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
                         <Box sx={{ mr: 2, mt: 0.5 }}>
-                          {clientBalanceData && clientBalanceData.client.current_balance < paymentAmount ? (
+                          {clientBalanceData && clientBalanceData.balance < paymentAmount ? (
                             <WarningIcon fontSize="large" color="warning" />
                           ) : (
-                            selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance ? (
+                            selectedSaleForPayment && paymentAmount < selectedSaleForPayment.total_amount ? (
                               <PaymentIcon fontSize="large" color="info" />
                             ) : (
                               <PaymentIcon fontSize="large" color="success" />
@@ -2234,19 +2220,19 @@ const Treasury = () => {
                         
                         <Box sx={{ flexGrow: 1 }}>
                           <Typography variant="h6" gutterBottom fontWeight="bold">
-                            {clientBalanceData && clientBalanceData.client.current_balance < paymentAmount
+                            {clientBalanceData && clientBalanceData.balance < paymentAmount
                               ? "Paiement à crédit"
-                              : (selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance
+                              : (selectedSaleForPayment && paymentAmount < selectedSaleForPayment.total_amount
                                 ? "Paiement partiel"
                                 : "Paiement total")}
                           </Typography>
                           
-                          {clientBalanceData && clientBalanceData.client.current_balance < paymentAmount ? (
+                          {clientBalanceData && clientBalanceData.balance < paymentAmount ? (
                             <Typography variant="body2">
-                              Ce paiement dépassera le solde disponible du client de {formatCurrency(paymentAmount - clientBalanceData.client.current_balance)} et créera un crédit.
+                              Ce paiement dépassera le solde disponible du client de {formatCurrency(paymentAmount - clientBalanceData.balance)} et créera un crédit.
                             </Typography>
                           ) : (
-                            selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance ? (
+                            selectedSaleForPayment && paymentAmount < selectedSaleForPayment.total_amount ? (
                               <Typography variant="body2">
                                 Vous effectuez un paiement partiel de {formatCurrency(paymentAmount)}. Un montant de {formatCurrency(selectedSaleForPayment.balance - paymentAmount)} restera à payer.
                                 Le statut de la vente sera mis à jour en "Partiellement payé".
@@ -2272,16 +2258,16 @@ const Treasury = () => {
                               <Typography variant="caption" color="text.secondary">Solde client utilisé</Typography>
                               <Typography variant="subtitle1" fontWeight="medium">
                                 {clientBalanceData 
-                                  ? formatCurrency(Math.min(clientBalanceData.client.current_balance, paymentAmount))
+                                  ? formatCurrency(Math.min(clientBalanceData.balance, paymentAmount))
                                   : "Chargement..."}
                               </Typography>
                             </Grid>
                             
-                            {clientBalanceData && clientBalanceData.client.current_balance < paymentAmount && (
+                            {clientBalanceData && clientBalanceData.balance < paymentAmount && (
                               <Grid item xs={6} sm={4}>
                                 <Typography variant="caption" color="error.main">Montant à crédit</Typography>
                                 <Typography variant="subtitle1" fontWeight="medium" color="error.main">
-                                  {formatCurrency(paymentAmount - clientBalanceData.client.current_balance)}
+                                  {formatCurrency(paymentAmount - clientBalanceData.balance)}
                                 </Typography>
                               </Grid>
                             )}
@@ -2326,9 +2312,9 @@ const Treasury = () => {
           </Button>
           <Button
             variant="contained"
-            color={clientBalanceData && clientBalanceData.client.current_balance < paymentAmount 
+            color={clientBalanceData && clientBalanceData.balance < paymentAmount 
               ? "warning" 
-              : (selectedSaleForPayment && paymentAmount < selectedSaleForPayment.balance 
+              : (selectedSaleForPayment && paymentAmount < selectedSaleForPayment.total_amount 
                 ? "info" 
                 : "primary")}
             onClick={handlePayFromAccount}
@@ -2336,7 +2322,6 @@ const Treasury = () => {
               processingPayment || 
               !selectedSaleForPayment || 
               paymentAmount <= 0 ||
-              (selectedSaleForPayment && paymentAmount > selectedSaleForPayment.balance) ||
               (selectedSaleForPayment && selectedSaleForPayment.payment_status === 'paid') // Disable if already paid
             }
             startIcon={processingPayment ? <CircularProgress size={20} /> : <PaymentIcon />}
@@ -2350,11 +2335,11 @@ const Treasury = () => {
               !selectedSaleForPayment ? 'Effectuer le paiement' : (
                 selectedSaleForPayment.payment_status === 'paid' ? 
                 'Vente déjà payée' : (
-                  // First check if it's a partial payment - the amount is less than the balance
-                  paymentAmount > 0 && paymentAmount < selectedSaleForPayment.balance ?
+                  // First check if it's a partial payment - the amount is less than the total
+                  paymentAmount > 0 && paymentAmount < selectedSaleForPayment.total_amount ?
                   'Effectuer un paiement partiel' : (
                     // Then check if it's a credit payment - client balance is less than payment amount
-                    clientBalanceData && clientBalanceData.client.current_balance < paymentAmount ? 
+                    clientBalanceData && clientBalanceData.balance < paymentAmount ? 
                     'Effectuer le paiement à crédit' : 'Effectuer le paiement total'
                   )
                 )

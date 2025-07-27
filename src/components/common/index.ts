@@ -9,6 +9,9 @@ export type { StandardButtonVariant } from './StandardButton';
 // DataGrid
 export { default as StandardDataGrid } from './StandardDataGrid';
 
+// Stats Card
+export { default as StatsCard } from './StatsCard';
+
 // Champs de saisie
 export { 
   StandardTextField, 
