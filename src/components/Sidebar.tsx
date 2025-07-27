@@ -78,7 +78,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
       to: "/",
       icon: <Dashboard />,
       text: "Tableau de bord",
-      requiredPermission: "view_dashboard"
+      requiredPermission: null // Dashboard should always be accessible
     },
     {
       to: "/sales",
@@ -125,7 +125,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
       to: "/treasury",
       icon: <AccountBalance />,
       text: "Trésorerie",
-      requiredPermission: "view_treasury"
+      requiredPermission: "view_cashflow" // Use an actual permission from your list
     },
     // Admin section
     {
@@ -141,7 +141,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
       to: "/settings",
       icon: <Settings />,
       text: "Paramètres", 
-      requiredPermission: "view_parameters"
+      requiredPermission: "change_user" // Use an actual admin permission from your list
     }
   ];
 
@@ -245,24 +245,9 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
                 to: string;
                 icon: React.ReactNode;
                 text: string;
-                requiredPermission?: string;
+                requiredPermission?: string | null;
                 adminOnly?: boolean;
               };
-              
-              // Special case for Dashboard - show during any state
-              if (navItem.to === "/") {
-                return (
-                  <PermissionNavigationItem
-                    key={navItem.to}
-                    to={navItem.to}
-                    icon={navItem.icon}
-                    text={navItem.text}
-                    requiredPermission={navItem.requiredPermission}
-                    open={open}
-                    forceShow={true} // Always show the dashboard
-                  />
-                );
-              }
               
               // Skip admin-only items if user is not admin
               if (navItem.adminOnly && !isAdmin) {
