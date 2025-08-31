@@ -12,6 +12,8 @@ export { default as StandardDataGrid } from './StandardDataGrid';
 // Stats Card
 export { default as StatsCard } from './StatsCard';
 
+// Dialog de suppression
+export { default as DeleteDialog } from './DeleteDialog';
 // Champs de saisie
 export { 
   StandardTextField, 

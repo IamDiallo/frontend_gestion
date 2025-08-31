@@ -9,7 +9,6 @@ import {
   Dialog,
   DialogActions,
   DialogContent,
-  DialogContentText,
   DialogTitle,
   Grid,
   MenuItem,
@@ -40,7 +39,8 @@ import {
 import { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import { 
   StandardDataGrid, 
-  StatusChip 
+  StatusChip,
+  DeleteDialog 
 } from './common';
 import { t } from '../utils/translations';
 import { 
@@ -173,10 +173,15 @@ const Sales = () => {
   // Add delete confirmation dialog state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [saleToDelete, setSaleToDelete] = useState<ExtendedSale | null>(null);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<ExtendedInvoice | null>(null);
+  const [quoteToDelete, setQuoteToDelete] = useState<ApiQuote | null>(null);
+
   const [deleteConfirmationInfo, setDeleteConfirmationInfo] = useState<{
     willRestoreStock: boolean;
     willRefundAmount: number;
     hasPayments: boolean;
+    invoiceId?: number;
+    quoteId?: number;
   } | null>(null);
   
   // Add new state variables for improved invoice and quote forms
@@ -494,32 +499,21 @@ const PaymentInfoCard = styled(Card)(() => ({
     
     setError(null);
     setStockError(null);
-    
     try {
       // Check if we have available stock for this product in the selected zone
-      const stockAvailability = await InventoryAPI.checkStockAvailability(
-        currentProduct.id!, 
-        selectedZone,
-        currentQuantity
-      );
-      
+      const stockAvailability = await InventoryAPI.checkStockAvailability(currentProduct.id, selectedZone, currentQuantity);
       if (!stockAvailability.available) {
-        setStockError(`Stock insuffisant pour ${currentProduct.name}. Disponible: ${stockAvailability.current_stock}, Demandé: ${currentQuantity}`);
+        setStockError('Stock insuffisant pour ce produit dans la zone sélectionnée.');
         return;
       }
-      
-      // If we get here, stock is available - add the product
       setSelectedProducts([
         ...selectedProducts,
         { product: currentProduct, quantity: currentQuantity },
       ]);
-      
-      // Decrease the available stock in our local state to prevent overselling in the same transaction
       setAvailableStock(prev => ({
         ...prev,
         [currentProduct.id!]: (prev[currentProduct.id!] || 0) - currentQuantity
       }));
-      
       setCurrentProduct(null);
       setCurrentQuantity(1);
       setStockError(null);
@@ -698,23 +692,9 @@ const PaymentInfoCard = styled(Card)(() => ({
         return;
       }
 
-      // First check if the sale can be deleted
-      const canDeleteResponse = await SalesAPI.canDelete(sale.id);
-      
-      if (!canDeleteResponse.can_delete) {
-        setError(`Suppression non autorisée: ${canDeleteResponse.reason}`);
-        return;
-      }
-
-      // Store the sale to delete and confirmation info
+      // Only show confirmation dialog, do not delete yet
       setSaleToDelete(sale);
-      setDeleteConfirmationInfo({
-        willRestoreStock: canDeleteResponse.will_restore_stock || false,
-        willRefundAmount: canDeleteResponse.will_refund_amount || 0,
-        hasPayments: canDeleteResponse.has_payments || false
-      });
-      
-      // Show confirmation dialog
+      setDeleteConfirmationInfo(null); // Optionally fetch info for dialog if needed
       setShowDeleteDialog(true);
     } catch (err: unknown) {
       console.error('Error checking delete eligibility:', err);
@@ -736,8 +716,8 @@ const PaymentInfoCard = styled(Card)(() => ({
 
   // Handle confirmed deletion
   const handleConfirmDelete = async () => {
-    if (!saleToDelete?.id) {
-      setError('Aucune vente sélectionnée pour suppression');
+    if (!saleToDelete?.id && !invoiceToDelete?.id && !quoteToDelete?.id) {
+      setError('Aucun élément sélectionné pour suppression');
       return;
     }
 
@@ -745,37 +725,74 @@ const PaymentInfoCard = styled(Card)(() => ({
       setError(null);
       setLoading(true);
 
-      console.log('Deleting sale:', saleToDelete);
-      const deletionResult = await SalesAPI.delete(saleToDelete.id);
-      console.log('Sale deleted:', deletionResult);
+      if (saleToDelete?.id) {
+          console.log('Deleting sale:', saleToDelete);
+          const deletionResult = await SalesAPI.delete(saleToDelete.id);
+          console.log('Sale deleted:', deletionResult);
 
-      // Show success message with details
-      if (deletionResult.deletion_summary) {
-        const summary = deletionResult.deletion_summary;
-        let successMessage = `Vente ${summary.sale_reference} supprimée avec succès.`;
-        
-        if (summary.stock_restored && summary.stock_restored.length > 0) {
-          successMessage += '\n\nStock restauré:';
-          summary.stock_restored.forEach((item: { product: string; quantity: number; zone: string }) => {
-            successMessage += `\n• ${item.product}: ${item.quantity} unités dans ${item.zone}`;
-          });
-        }
-        
-        if (summary.payment_refunded > 0) {
-          successMessage += `\n\nMontant remboursé: ${formatCurrency(summary.payment_refunded)}`;
-        }
-        
-        setSuccessMessage(successMessage);
-        setTimeout(() => setSuccessMessage(null), 8000); // Show for 8 seconds due to more content
+          // Show success message with details
+          if (deletionResult.deletion_summary) {
+            const summary = deletionResult.deletion_summary;
+            let successMessage = `Vente ${summary.sale_reference} supprimée avec succès.`;
+            
+            if (summary.stock_restored && summary.stock_restored.length > 0) {
+              successMessage += '\n\nStock restauré:';
+              summary.stock_restored.forEach((item: { product: string; quantity: number; zone: string }) => {
+                successMessage += `\n• ${item.product}: ${item.quantity} unités dans ${item.zone}`;
+              });
+            }
+            
+            if (summary.payment_refunded > 0) {
+              successMessage += `\n\nMontant remboursé: ${formatCurrency(summary.payment_refunded)}`;
+            }
+            
+            setSuccessMessage(successMessage);
+            setTimeout(() => setSuccessMessage(null), 8000); // Show for 8 seconds due to more content
+          }
+
+          // Update the local state
+          setSales(sales.filter(s => s.id !== saleToDelete.id));
+          
+          // Close dialog and reset state
+          setShowDeleteDialog(false);
+          setSaleToDelete(null);
+          setDeleteConfirmationInfo(null);
+      }else if (invoiceToDelete?.id) {
+          console.log('Deleting invoice:', invoiceToDelete);
+          const deletionResult = await InvoicesAPI.delete(invoiceToDelete.id);
+          console.log('Invoice deleted:', deletionResult);
+
+          // Show success message with details
+          if (deletionResult) {
+            setSuccessMessage(`Facture supprimée avec succès.`);
+            setTimeout(() => setSuccessMessage(null), 8000); // Show for 8 seconds due to more content
+          }
+
+          // Update the local state
+          setInvoices(invoices.filter(i => i.id !== invoiceToDelete.id));
+
+          // Close dialog and reset state
+          setShowDeleteDialog(false);
+          setInvoiceToDelete(null);
+      }else if (quoteToDelete?.id) {
+          console.log('Deleting quote:', quoteToDelete);
+          const deletionResult = await QuotesAPI.delete(quoteToDelete.id);
+          console.log('Quote deleted:', deletionResult);
+
+          // Show success message with details
+          if (deletionResult) {
+            setSuccessMessage(`Devis ${deletionResult} supprimé avec succès.`);
+            setTimeout(() => setSuccessMessage(null), 8000); // Show for 8 seconds due to more content
+          }
+
+          // Update the local state
+          setQuotes(quotes.filter(q => q.id !== quoteToDelete.id));
+
+          // Close dialog and reset state
+          setShowDeleteDialog(false);
+          setQuoteToDelete(null);
       }
 
-      // Update the local state
-      setSales(sales.filter(s => s.id !== saleToDelete.id));
-      
-      // Close dialog and reset state
-      setShowDeleteDialog(false);
-      setSaleToDelete(null);
-      setDeleteConfirmationInfo(null);
     } catch (err: unknown) {
       console.error('Error deleting sale:', err);
       
@@ -800,7 +817,9 @@ const PaymentInfoCard = styled(Card)(() => ({
   const handleCancelDelete = () => {
     setShowDeleteDialog(false);
     setSaleToDelete(null);
+    setQuoteToDelete(null);
     setDeleteConfirmationInfo(null);
+    setInvoiceToDelete(null); // Reset invoice deletion state
   };
 
   // Add the formatCurrency function
@@ -1021,51 +1040,67 @@ const PaymentInfoCard = styled(Card)(() => ({
 
   // Handle deleting an invoice - improved version
   const handleDeleteInvoice = async (invoice: ExtendedInvoice) => {
-    if (!invoice.id) return;
     
-    if (window.confirm(`Êtes-vous sûr de vouloir supprimer la facture ${invoice.reference} ?`)) {
-      try {
-        await InvoicesAPI.delete(invoice.id);
-        setInvoices(invoices.filter(i => i.id !== invoice.id));
-        
-        setSnackbarState({
-          open: true,
-          message: `Facture ${invoice.reference} supprimée avec succès`,
-          severity: 'success'
-        });
-      } catch (err) {
-        console.error('Error deleting invoice:', err);
-        setSnackbarState({
-          open: true,
-          message: 'Erreur lors de la suppression de la facture. Veuillez réessayer.',
-          severity: 'error'
-        });
+    try {
+      setError(null);
+
+      if (!invoice.id) {
+        setError('ID de la vente manquant');
+        return;
       }
+
+      // Only show confirmation dialog, do not delete yet
+      setInvoiceToDelete(invoice);
+      setDeleteConfirmationInfo(null); // Optionally fetch info for dialog if needed
+      setShowDeleteDialog(true);
+    } catch (err: unknown) {
+      console.error('Error checking delete eligibility:', err);
+      
+      let errorMessage = 'Erreur lors de la vérification de suppression.';
+      
+      if (err && typeof err === 'object' && 'response' in err) {
+        const response = (err as { response?: { data?: { message?: string; error?: string } } }).response;
+        if (response?.data?.message) {
+          errorMessage = response.data.message;
+        } else if (response?.data?.error) {
+          errorMessage = response.data.error;
+        }
+      }
+      
+      setError(errorMessage);
     }
+    
   };
 
   // Handle deleting a quote
   const handleDeleteQuote = async (quote: ApiQuote) => {
-    if (!quote.id) return;
-    
-    if (window.confirm(`Êtes-vous sûr de vouloir supprimer le devis ${quote.reference} ?`)) {
-      try {
-        await QuotesAPI.delete(quote.id);
-        setQuotes(quotes.filter(q => q.id !== quote.id));
-        
-        setSnackbarState({
-          open: true,
-          message: `Devis ${quote.reference} supprimé avec succès`,
-          severity: 'success'
-        });
-      } catch (err) {
-        console.error('Error deleting quote:', err);
-        setSnackbarState({
-          open: true,
-          message: 'Erreur lors de la suppression du devis. Veuillez réessayer.',
-          severity: 'error'
-        });
+    try {
+      setError(null);
+
+      if (!quote.id) {
+        setError('ID de la vente manquant');
+        return;
       }
+
+      // Only show confirmation dialog, do not delete yet
+      setQuoteToDelete(quote);
+      setDeleteConfirmationInfo(null); // Optionally fetch info for dialog if needed
+      setShowDeleteDialog(true);
+    } catch (err: unknown) {
+      console.error('Error checking delete eligibility:', err);
+      
+      let errorMessage = 'Erreur lors de la vérification de suppression.';
+      
+      if (err && typeof err === 'object' && 'response' in err) {
+        const response = (err as { response?: { data?: { message?: string; error?: string } } }).response;
+        if (response?.data?.message) {
+          errorMessage = response.data.message;
+        } else if (response?.data?.error) {
+          errorMessage = response.data.error;
+        }
+      }
+      
+      setError(errorMessage);
     }
   };
 
@@ -3049,7 +3084,7 @@ const PaymentInfoCard = styled(Card)(() => ({
               <Grid item xs={12}>
                 <Autocomplete
                   options={sales.filter(sale => 
-                    (sale.status === 'delivered' || sale.status === 'confirmed' || sale.status === 'completed') &&
+                    (sale.status === 'payment_pending' || sale.status === 'confirmed' || sale.status === 'completed') &&
                     !invoices.some(inv => inv.sale === sale.id)
                   )}
                   getOptionLabel={(option) => {
@@ -3255,6 +3290,8 @@ const PaymentInfoCard = styled(Card)(() => ({
                     >
                       <MenuItem value="draft">Brouillon</MenuItem>
                       <MenuItem value="sent">Envoyée</MenuItem>
+                      <MenuItem value="unpaid">Impayée</MenuItem>
+                      <MenuItem value="partially_paid">Partiellement payée</MenuItem>
                       <MenuItem value="paid">Payée</MenuItem>
                       <MenuItem value="overdue">En retard</MenuItem>
                       <MenuItem value="cancelled">Annulée</MenuItem>
@@ -3998,84 +4035,16 @@ const PaymentInfoCard = styled(Card)(() => ({
           </Alert>
         </Snackbar>
 
-        {/* Delete Confirmation Dialog */}
-        <Dialog 
-          open={showDeleteDialog} 
+        {/* Delete Confirmation Dialog (Reusable) */}
+        <DeleteDialog
+          open={showDeleteDialog}
           onClose={handleCancelDelete}
-          PaperProps={{
-            sx: {
-              borderRadius: 2,
-              boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
-              backgroundColor: 'background.paper'
-            }
-          }}
-        >
-          <DialogTitle sx={{ 
-            backgroundColor: 'error.main', 
-            color: '#fff',
-            fontWeight: 'bold'
-          }}>
-            Confirmation de suppression
-          </DialogTitle>
-          <DialogContent sx={{ 
-            p: 3, 
-            mt: 2, 
-            backgroundColor: 'background.paper' 
-          }}>
-            <DialogContentText color="text.primary" sx={{ mb: 2 }}>
-              Êtes-vous sûr de vouloir supprimer la vente <strong>{saleToDelete?.reference}</strong> ?
-            </DialogContentText>
-            
-            {deleteConfirmationInfo && (
-              <Box sx={{ mt: 2 }}>
-                {deleteConfirmationInfo.willRestoreStock && (
-                  <Alert severity="warning" sx={{ mb: 2 }}>
-                    ⚠️ Cette action va restaurer le stock des produits vendus.
-                  </Alert>
-                )}
-                
-                {deleteConfirmationInfo.hasPayments && deleteConfirmationInfo.willRefundAmount > 0 && (
-                  <Alert severity="info" sx={{ mb: 2 }}>
-                    💰 Le montant payé ({formatCurrency(deleteConfirmationInfo.willRefundAmount)}) sera crédité au compte du client.
-                  </Alert>
-                )}
-                
-                <Alert severity="error">
-                  Cette action est irréversible.
-                </Alert>
-              </Box>
-            )}
-          </DialogContent>
-          <DialogActions sx={{ 
-            p: 2, 
-            backgroundColor: 'rgba(0,0,0,0.02)'
-          }}>
-            <Button 
-              onClick={handleCancelDelete} 
-              disabled={loading}
-              variant="outlined"
-              sx={{ borderRadius: '20px' }}
-            >
-              Annuler
-            </Button>
-            <Button 
-              variant="contained" 
-              color="error" 
-              onClick={handleConfirmDelete}
-              disabled={loading}
-              startIcon={loading ? <CircularProgress size={20} /> : <DeleteIcon />}
-              sx={{ 
-                borderRadius: '20px',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
-                '&:hover': {
-                  boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
-                }
-              }}
-            >
-              {loading ? 'Suppression...' : 'Supprimer'}
-            </Button>
-          </DialogActions>
-        </Dialog>
+          onConfirm={handleConfirmDelete}
+          loading={loading}
+          type={invoiceToDelete ? 'invoice' : saleToDelete ? 'sale' : 'quote'}
+          item={invoiceToDelete || saleToDelete || quoteToDelete}
+          confirmationInfo={deleteConfirmationInfo}
+        />
 
         {/* Success message snackbar */}
         {successMessage && (

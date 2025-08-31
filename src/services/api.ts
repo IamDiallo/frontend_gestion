@@ -23,7 +23,6 @@ interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 console.log('Using API URL:', API_URL);
-// const API_URL = 'http://ec2-3-84-250-165.compute-1.amazonaws.com/api/';
 
 
 const api = axios.create({
