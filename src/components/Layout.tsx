@@ -159,7 +159,7 @@ const Layout: React.FC = () => {
   return (
     <Box sx={{ display: 'flex' }}>
       <CssBaseline />
-      <AppBarStyled position="fixed" open={open} sx={{ boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}>
+      <AppBarStyled position="fixed" open={open} sx={{ boxShadow: '0 0 10px rgba(0,0,0,0.1)', borderRadius: '0' }}>
         <Toolbar>
           <IconButton
             color="inherit"
@@ -232,7 +232,9 @@ const Layout: React.FC = () => {
         width: isSmallScreen ? '100%' : 'auto',
         overflow: 'auto' // Add overflow auto
       }}>
-        <DrawerHeader />
+        <DrawerHeader
+        
+        />
         <Box >
           <Outlet />
         </Box>

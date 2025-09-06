@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import {
   ChevronLeft as ChevronLeftIcon,
+  MenuOpen as MenuOpenIcon,
   Dashboard,
   ShoppingCart,
   People,
@@ -203,6 +204,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
           backgroundColor: theme.palette.background.paper,
           borderRight: `1px solid ${theme.palette.divider}`,
           boxShadow: theme.shadows[1],
+          borderRadius: 0,
         },
       }}
       variant={variant}
@@ -215,14 +217,13 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
         justifyContent: 'space-between',
         alignItems: 'center',
         px: 2,
-        py: 1.5
+        py: 1.5,
+        borderRadius: 0
       }}>
         <Logo variant="full" size="medium" />
-        {isSmallScreen && (
-          <IconButton onClick={onClose}>
-            <ChevronLeftIcon />
-          </IconButton>
-        )}
+        <IconButton onClick={onClose} sx={{ bgcolor: 'transparent', color: theme.palette.primary.main, '&:hover': { bgcolor: theme.palette.action.hover } }}>
+          <MenuOpenIcon fontSize="large" />
+        </IconButton>
       </DrawerHeader>
 
       <Divider />
