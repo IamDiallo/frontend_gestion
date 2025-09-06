@@ -6,12 +6,10 @@ import {
   Box,
   IconButton, 
   Typography,
-  useMediaQuery,
   Skeleton,
   CircularProgress
 } from '@mui/material';
 import {
-  ChevronLeft as ChevronLeftIcon,
   MenuOpen as MenuOpenIcon,
   Dashboard,
   ShoppingCart,
@@ -46,7 +44,6 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
   const theme = useTheme();
-  const isSmallScreen = useMediaQuery(theme.breakpoints.down('md'));
   const { isAdmin, loading: permissionsLoading, refreshPermissions } = usePermissions();
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [currentUser, setCurrentUser] = useState<string | null>(null);
