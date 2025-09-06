@@ -1006,7 +1006,7 @@ export const SalesAPI = {
       throw error;
     }
   },
-  payFromAccount: async (saleId: number, paymentData: { amount: number, description?: string }): Promise<AccountPaymentResponse> => {
+  payFromAccount: async (saleId: number, paymentData: { amount: number, description?: string, company_account?: number | null }): Promise<AccountPaymentResponse> => {
     try {
       debugAPI.logRequest(`/sales/${saleId}/pay_from_account/`, 'POST', paymentData);
       const response = await api.post(`/sales/${saleId}/pay_from_account/`, paymentData);

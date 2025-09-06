@@ -159,7 +159,7 @@ const Layout: React.FC = () => {
   return (
     <Box sx={{ display: 'flex' }}>
       <CssBaseline />
-      <AppBarStyled position="fixed" open={open} sx={{ boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
+      <AppBarStyled position="fixed" open={open} sx={{ boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}>
         <Toolbar>
           <IconButton
             color="inherit"

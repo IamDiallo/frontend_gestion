@@ -168,6 +168,7 @@ export const validateTransferForm = (transfer: Partial<AccountTransfer>): string
  * Validate deposit form data
  */
 export const validateDepositForm = (deposit: ClientDeposit): string | null => {
+  console.log("Deposit validation:", deposit);
   if (!deposit.client) {
     return 'Veuillez sélectionner un client';
   }

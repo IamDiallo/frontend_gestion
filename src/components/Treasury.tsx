@@ -104,6 +104,10 @@ const Treasury = () => {
   const [clientPage, setClientPage] = useState(0);
   const [clientRowsPerPage, setClientRowsPerPage] = useState(6);
 
+  const [depositAccountTouched, setDepositAccountTouched] = useState(false);
+  const [depositAccountError, setDepositAccountError] = useState<string | null>(null);
+
+
   // Payment related state variables
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<OutstandingSale | null>(null);
@@ -111,6 +115,11 @@ const Treasury = () => {
   const [paymentDescription, setPaymentDescription] = useState('');
   const [processingPayment, setProcessingPayment] = useState(false);
 
+  // New state for company account selection in payment
+  const [selectedCompanyAccount, setSelectedCompanyAccount] = useState<Account | null>(null);
+  const [companyAccountError, setCompanyAccountError] = useState<string | null>(null);
+  const [companyAccountTouched, setCompanyAccountTouched] = useState(false);
+  const companyAccountRequired = true;
 
   // New client deposit state
   const [showDepositModal, setShowDepositModal] = useState(false);
@@ -203,32 +212,29 @@ const Treasury = () => {
     }
   }, [selectedAccount, startDate, endDate, transactionTypeFilter]);
 
-  // Load data on component mount
+
+  // Grouped useEffect for all data/resource loading
   useEffect(() => {
+    // Initial client fetch
     fetchClients();
-  }, []);
-  
-  // Load resources when the deposit modal is opened
-  useEffect(() => {
+    fetchAllAccounts();
+
+
+    // Deposit modal resource fetch
     if (showDepositModal) {
       fetchResources();
+      setDepositAccountTouched(false);
+      setDepositAccountError(null);
+    } else {
+      setDepositAccountTouched(false);
+      setDepositAccountError(null);
     }
-  }, [showDepositModal]);
-  
-  // Load accounts when account movements tab is active
-  useEffect(() => {
-    if (tabValue === 1) {
-      fetchAllAccounts();
-      fetchAccountMovements();
-    }
-  }, [tabValue, fetchAllAccounts, fetchAccountMovements]);
 
-  // Reload movements when filters change
-  useEffect(() => {
+    // Account movements tab fetch
     if (tabValue === 1) {
       fetchAccountMovements();
     }
-  }, [tabValue, fetchAccountMovements]);
+  }, [showDepositModal, tabValue, fetchAllAccounts, fetchAccountMovements]);
 
   // Filter clients for client tab
   const filteredClients = clients.filter((client) =>
@@ -342,27 +348,27 @@ const Treasury = () => {
   // Handle payment from client account
   const handlePayFromAccount = async (): Promise<void> => {
     if (!selectedSaleForPayment || !selectedClient) return;
-    
+    if (companyAccountRequired && !selectedCompanyAccount) {
+      setCompanyAccountTouched(true);
+      setCompanyAccountError('Veuillez sélectionner le compte de l’entreprise à créditer.');
+      return;
+    }
     try {
       setProcessingPayment(true);
       setError(null);
-        
+      setCompanyAccountError(null);
       // Check if this will be a credit payment
       const isCreditPayment = clientBalanceData && clientBalanceData.balance < paymentAmount;
-      
-      // If it's a credit payment, confirm with the user
       if (isCreditPayment) {
         const creditAmount = clientBalanceData 
           ? Math.abs(clientBalanceData.balance - paymentAmount)
           : paymentAmount;
-          
         if (!window.confirm(`ATTENTION: Ce paiement dépassera le solde disponible du client et créera un crédit de ${formatCurrency(creditAmount)}. Voulez-vous continuer?`)) {
           setProcessingPayment(false);
           return;
         }
       }
-        // Pay directly from account
-      // Define the type for our enhanced API response
+      // Pay directly from account, now with company account
       interface EnhancedPaymentResponse {
         success: boolean;
         message: string;
@@ -385,22 +391,17 @@ const Treasury = () => {
         client_balance: number;
         is_credit_payment: boolean;
       }
-      
       const response = await SalesAPI.payFromAccount(
         selectedSaleForPayment.id,
         { 
           amount: paymentAmount,
-          description: paymentDescription || `Paiement pour la vente ${selectedSaleForPayment.reference} depuis le compte client`
+          description: paymentDescription || `Paiement pour la vente ${selectedSaleForPayment.reference} depuis le compte client`,
+          company_account: selectedCompanyAccount?.id || null
         }
       ) as EnhancedPaymentResponse;
-      
-        // Show success message with credit warning if applicable
       let successMsg = `Paiement de ${formatCurrency(response.payment.amount)} traité avec succès. Nouveau solde client: ${formatCurrency(response.client_balance)}`;
-      
-      // Add credit warning if this was a credit payment
       if (response.is_credit_payment) {
         successMsg = `⚠️ PAIEMENT À CRÉDIT: ${successMsg}`;
-        // Also show a toast notification about the credit
         enqueueSnackbar(`Attention: Un crédit de ${formatCurrency(Math.abs(response.client_balance))} a été accordé à ce client`, { 
           variant: 'warning',
           autoHideDuration: 10000,
@@ -410,18 +411,11 @@ const Treasury = () => {
           }
         });
       }
-      
-      // Add information about partial payment
       if (response.sale.payment_status === 'partially_paid') {
-        // Extract payment details from the response
         const paidAmount = response.sale.paid_amount;
         const totalAmount = response.sale.total_amount;
         const remainingAmount = response.sale.remaining_amount;
-        
-        // Add partial payment info to success message
         successMsg += `\nPaiement partiel: ${formatCurrency(paidAmount)} payé, ${formatCurrency(remainingAmount)} restant.`;
-        
-        // Show notification about partial payment
         enqueueSnackbar(
           <Box>
             <Typography variant="subtitle2">Paiement partiel enregistré</Typography>
@@ -441,25 +435,21 @@ const Treasury = () => {
           }
         );
       }
-      
       setSuccessMessage(successMsg);
       setShowSuccessSnackbar(true);
       setTimeout(() => {
         setShowSuccessSnackbar(false);
         setSuccessMessage(null);
       }, 6000);
-      
-      // Update the client balance data
-      if (selectedClient) {        // Save previous balance for animation
+      if (selectedClient) {
         if (clientBalanceData) {
           setPreviousBalance(clientBalanceData.balance);
         }
-        // Reload client data to get updated balance
         loadClientAccountData(selectedClient.id);
       }
-      // Close modal and reset form
       setShowPaymentModal(false);
       resetPaymentForm();
+      setSelectedCompanyAccount(null);
       setProcessingPayment(false);
     } catch (err) {
       console.error('Error processing payment:', err);
@@ -1017,6 +1007,7 @@ const Treasury = () => {
                             width: '100%' 
                           }}>
                             <DataGrid
+                              rowHeight={70}
                               rows={(clientBalanceData.outstanding_sales || []).map((sale: OutstandingSale) => ({
                                 id: sale.id,
                                 reference: sale.reference,
@@ -1103,28 +1094,37 @@ const Treasury = () => {
                                 { 
                                   field: 'actions', 
                                   headerName: 'Actions', 
-                                  width: 90,
+                                  width: 290,
                                   align: 'center',
                                   headerAlign: 'center',
                                   sortable: false,
                                   renderCell: (params) => (
-                                    <Tooltip title="Effectuer un paiement">
-                                      <IconButton 
-                                        size="small" 
-                                        color="primary"
+                                    <Tooltip title="Effectuer un paiement sur cette vente">
+                                      <Button
+                                        variant="contained"
+                                        color="success"
+                                        size="medium"
+                                        startIcon={<PaymentIcon />}
+                                        sx={{
+                                          borderRadius: 2,
+                                          fontWeight: 'bold',
+                                          px: 2,
+                                          boxShadow: 2,
+                                          textTransform: 'none',
+                                        }}
                                         onClick={() => {
                                           const sale = params.value;
                                           const actualBalance = sale.payment_status === 'unpaid' && sale.balance === 0 
                                             ? sale.total_amount 
                                             : sale.balance;
-                                          
+
                                           const saleWithCorrectBalance = {
                                             ...sale,
                                             balance: actualBalance
                                           };
-                                          
+
                                           setSelectedSaleForPayment(saleWithCorrectBalance);
-                                          
+
                                           if (clientBalanceData) {
                                             const availableBalance = clientBalanceData.balance;
                                             if (availableBalance > 0 && availableBalance < actualBalance) {
@@ -1135,20 +1135,13 @@ const Treasury = () => {
                                           } else {
                                             setPaymentAmount(actualBalance);
                                           }
-                                          
+
                                           setPaymentDescription(`Paiement pour la vente ${sale.reference}`);
                                           setShowPaymentModal(true);
                                         }}
-                                        sx={{
-                                          bgcolor: 'primary.main',
-                                          color: 'white',
-                                          '&:hover': {
-                                            bgcolor: 'primary.dark',
-                                          }
-                                        }}
                                       >
-                                        <PaymentIcon fontSize="small" />
-                                      </IconButton>
+                                        Effectuer un paiement
+                                      </Button>
                                     </Tooltip>
                                   )
                                 }
@@ -1254,7 +1247,8 @@ const Treasury = () => {
                                   headerName: 'Débit', 
                                   width: 130, 
                                   align: 'right',
-                                  headerAlign: 'right',                                  renderCell: (params) => (
+                                  headerAlign: 'right',
+                                  renderCell: (params) => (
                                     params.value > 0 ? (
                                       <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 500 }}>
                                         {formatCurrency(params.value)}
@@ -1443,6 +1437,7 @@ const Treasury = () => {
                         { value: 'purchase', label: 'Achat' },
                         { value: 'deposit', label: 'Dépôt' }
                       ].find(option => option.value === transactionTypeFilter) || { value: '', label: 'Tous les types' }}
+                      isOptionEqualToValue={(option, value) => option.value === value.value}
                       onChange={(event, newValue) => setTransactionTypeFilter(newValue?.value || '')}
                       renderInput={(params) => (
                         <TextField 
@@ -1570,7 +1565,7 @@ const Treasury = () => {
                   <DataGrid
                     rows={accountMovements.map(movement => ({
                       id: movement.id,
-                      account_name: movement.account_name || '',
+                      account_name: allAccounts.find(a => a.id === Number(movement.account))?.name || 'N/A',
                       date: formatDate(movement.date),
                       rawDate: movement.date,
                       reference: movement.reference,
@@ -1757,8 +1752,9 @@ const Treasury = () => {
             <Grid item xs={12}>
               <Autocomplete
                 options={allAccounts}
-                getOptionLabel={(option) => `${option.name} (${option.account_type}) - ${formatCurrency(option.current_balance)}`}
+                getOptionLabel={(option) => `${option.name} (${option.account_type})`}
                 value={allAccounts.find(a => a.id === accountTransfer.from_account) || null}
+                isOptionEqualToValue={(option, value) => option.id === value.id}
                 onChange={(event, newValue) => {
                   setAccountTransfer({...accountTransfer, from_account: newValue?.id});
                 }}
@@ -1773,22 +1769,29 @@ const Treasury = () => {
               />
             </Grid>
             <Grid item xs={12}>
-              <Autocomplete
-                options={allAccounts.filter(a => a.id !== accountTransfer.from_account)}
-                getOptionLabel={(option) => `${option.name} (${option.account_type}) - ${formatCurrency(option.current_balance)}`}
-                value={allAccounts.find(a => a.id === accountTransfer.to_account) || null}
-                onChange={(event, newValue) => {
-                  setAccountTransfer({...accountTransfer, to_account: newValue?.id});
-                }}
-                renderInput={(params) => (
-                  <TextField {...params}
-                    label="Compte destination"
-                    variant="outlined"
-                    fullWidth
-                    required
-                  />
-                )}
-              />
+             <Autocomplete
+              options={accounts}
+              getOptionLabel={(option) => `${option.name} (${option.account_type})`}
+              value={selectedClient ? accounts.find(a => a.id === selectedClient.account) || null : accounts.find(a => a.id === newDeposit.account) || null}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              onChange={(event, newValue) => {
+                setNewDeposit({...newDeposit, account: newValue ? newValue.id : null});
+                setDepositAccountTouched(true);
+                setDepositAccountError(null);
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Compte du client"
+                  variant="outlined"
+                  fullWidth
+                  required
+                  error={depositAccountTouched && !newDeposit.account}
+                  helperText={depositAccountTouched && !newDeposit.account ? depositAccountError || "Veuillez sélectionner un compte pour le dépôt" : ""}
+                />
+              )}
+              disabled={!!selectedClient}
+            />
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
@@ -1902,9 +1905,10 @@ const Treasury = () => {
                   options={clients}
                   getOptionLabel={(option) => option.name}
                   value={clients.find(c => c.id === newDeposit.client) || null}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
                   onChange={(event, newValue) => {
                     setNewDeposit({
-                      ...newDeposit, 
+                      ...newDeposit,
                       client: newValue ? newValue.id : null,
                       account: newValue ? newValue.account || null : null
                     });
@@ -1922,11 +1926,12 @@ const Treasury = () => {
               </Grid>
               <Grid item xs={12}>
                 <Autocomplete
-                  options={accounts.filter(a => a.account_type === 'cash')}
+                  options={accounts}
                   getOptionLabel={(option) => `${option.name} (${option.account_type})`}
-                  value={accounts.find(a => a.id === newDeposit.account) || null}
+                  value={selectedClient ? accounts.find(a => a.id === selectedClient.account) || null : accounts.find(a => a.id === newDeposit.account) || null}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
                   onChange={(event, newValue) => {
-                    setNewDeposit({...newDeposit, account: newValue ? newValue.id : null});
+                      setNewDeposit({...newDeposit, account: newValue ? newValue.id : null});
                   }}
                   renderInput={(params) => (
                     <TextField {...params}
@@ -1934,12 +1939,13 @@ const Treasury = () => {
                       variant="outlined"
                       fullWidth
                       required
-                      helperText="Sélectionnez le compte qui recevra le dépôt"
                     />
                   )}
+                  disabled={!!selectedClient}
                 />
               </Grid>
-              <Grid item xs={12}>                <Autocomplete
+               <Grid item xs={12}>                
+                <Autocomplete
                   options={paymentMethods}
                   getOptionLabel={(option) => option.name}
                   value={newDeposit.payment_method}
@@ -1956,6 +1962,7 @@ const Treasury = () => {
                   )}
                 />
               </Grid>
+              
               <Grid item xs={12} md={6}>
                 <TextField
                   label="Montant"
@@ -2096,7 +2103,7 @@ const Treasury = () => {
                     <Typography variant="body2" color="text.secondary">
                       Montant restant
                     </Typography>
-                    <Typography variant="subtitle1" fontWeight="medium" color={selectedSaleForPayment.balance > 0 ? "error.main" : "success.main"}>
+                    <Typography variant="subtitle1" fontWeight="medium" color={selectedSaleForPayment.balance >  0 ? "error.main" : "success.main"}>
                       {formatCurrency(selectedSaleForPayment.payment_status === 'unpaid' && selectedSaleForPayment.balance === 0 
                         ? selectedSaleForPayment.total_amount 
                         : Math.max(0, selectedSaleForPayment.balance))}
@@ -2155,6 +2162,31 @@ const Treasury = () => {
               </Typography>
               
               <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <Autocomplete
+                    options={allAccounts.filter(acc => acc.account_type !== 'client' && acc.account_type !== 'supplier')}
+                    getOptionLabel={(option) => {
+                      return option && option.name ? `${option.name} (${option.account_type})` : '';
+                    }}
+                    value={selectedCompanyAccount}
+                    onChange={(event, newValue) => {
+                      setSelectedCompanyAccount(newValue);
+                      setCompanyAccountTouched(true);
+                      setCompanyAccountError(null);
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Compte de l'entreprise à créditer"
+                        variant="outlined"
+                        fullWidth
+                        required={companyAccountRequired}
+                        error={companyAccountTouched && !selectedCompanyAccount}
+                        helperText={companyAccountTouched && !selectedCompanyAccount ? companyAccountError : ''}
+                      />
+                    )}
+                  />
+                </Grid>
                 <Grid item xs={12}>
                   <TextField
                     label="Montant du paiement"
