@@ -188,13 +188,16 @@ const Suppliers = () => {
   }, []);
 
   // Fetch available accounts of type "supplier"
+  
   useEffect(() => {
-    const fetchAvailableAccounts = async () => {
+    const fetchAvailableAccounts = async (accountId: number | undefined) => {
       try {
         setLoadingAccounts(true);
         const accounts = await AccountsAPI.getByType('supplier');
         // Filter out accounts already assigned to suppliers
-        const usedAccountIds = suppliers.filter(s => s.account !== undefined).map(s => s.account);
+        const usedAccountIds = suppliers
+          .filter(s => s.account !== undefined && s.account !== accountId)
+          .map(s => s.account);
         const available = accounts.filter(a => !usedAccountIds.includes(a.id));
         // Only map id and name to match the expected type
         setAvailableAccounts(
@@ -210,9 +213,9 @@ const Suppliers = () => {
       }
     };
     if (openDialog) {
-      fetchAvailableAccounts();
+      fetchAvailableAccounts(formData.account);
     }
-  }, [openDialog, suppliers]);
+  }, [openDialog, suppliers, formData.account]);
 
   const handleOpenDialog = (supplier?: Supplier) => {
     if (supplier) {

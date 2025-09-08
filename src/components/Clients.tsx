@@ -40,7 +40,6 @@ const Clients = () => {
   const { canPerform } = usePermissionCheck();
   const canEditClient = canPerform('change_client');
   const canDeleteClient = canPerform('delete_client');
-
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -111,18 +110,19 @@ const Clients = () => {
     };
 
     fetchClients();
+
   }, []);
 
   // Add effect to load available client accounts
   useEffect(() => {
-    const fetchAvailableAccounts = async () => {
+    const fetchAvailableAccounts = async (accountId: number | undefined) => {
       try {
         setLoadingAccounts(true);
         // Get client-type accounts that aren't assigned to clients yet
         const accounts = await AccountsAPI.getByType('client');
-        
-        // Filter out accounts that are already assigned to clients
-        const usedAccountIds = clients.filter(c => c.account !== undefined).map(c => c.account);
+        const usedAccountIds = clients
+          .filter(c => c.account !== undefined && c.account !== accountId)
+          .map(c => c.account);
         const availableAccounts = accounts.filter(a => !usedAccountIds.includes(a.id));
         
         setAvailableAccounts(availableAccounts);
@@ -134,9 +134,9 @@ const Clients = () => {
     };
 
     if (openDialog) {
-      fetchAvailableAccounts();
+      fetchAvailableAccounts(formData.account);
     }
-  }, [openDialog, clients]);
+  }, [openDialog, clients, formData.account]);
 
   const filteredClients = clients.filter((client) =>
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
