@@ -16,6 +16,7 @@ import {
 } from '../interfaces/financial';
 import { Production } from '../interfaces/production';
 import { AccountPaymentResponse } from '../interfaces/payment';
+import { toast } from "react-toastify";
 
 interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -33,114 +34,115 @@ const api = axios.create({
   withCredentials: true, // This is important for cookies/authorization
 });
 
-// Add a request interceptor
+
+// Request interceptor
 api.interceptors.request.use(
   async (config: CustomAxiosRequestConfig) => {
-    console.log('Request configuration:', {
-      url: config.url,
-      method: config.method,
-      headers: config.headers,
-      baseURL: config.baseURL,
-      withCredentials: config.withCredentials
-    });
-    
-    const token = localStorage.getItem('access_token');
-    const tokenExpiration = localStorage.getItem('token_expiration');
-    
-    // If we have a token but it's expiring soon (within 1 minute) or expired
+    const token = localStorage.getItem("access_token");
+    const tokenExpiration = localStorage.getItem("token_expiration");
+
     if (token && tokenExpiration) {
       const expirationTime = parseInt(tokenExpiration, 10);
-      const currentTime = new Date().getTime();
+      const currentTime = Date.now();
       const timeToExpire = expirationTime - currentTime;
-      
-      // If token will expire in less than 1 minute, try to refresh it proactively
+
+      // Refresh proactively if expiring within 1 min
       if (timeToExpire < 60000 && timeToExpire > 0) {
-        console.log('Token expiring soon, refreshing proactively');
         try {
-          const refreshToken = localStorage.getItem('refresh_token');
+          const refreshToken = localStorage.getItem("refresh_token");
           if (refreshToken) {
             const response = await axios.post(`${API_URL}/token/refresh/`, {
-              refresh: refreshToken
+              refresh: refreshToken,
             });
-            
-            if (response.data && response.data.access) {
-              const newToken = response.data.access;
-              localStorage.setItem('access_token', newToken);
-              
-              // Update expiration time (assuming 15 minutes)
-              const newExpirationTime = new Date().getTime() + (15 * 60 * 1000);
-              localStorage.setItem('token_expiration', newExpirationTime.toString());
-              
-              config.headers.Authorization = `Bearer ${newToken}`;
+
+            if (response.data?.access) {
+              const newAccess = response.data.access;
+              localStorage.setItem("access_token", newAccess);
+
+              // Save new refresh token if rotation is enabled
+              if (response.data.refresh) {
+                localStorage.setItem("refresh_token", response.data.refresh);
+              }
+
+              // Update expiration time (15 mins default)
+              const newExpirationTime = Date.now() + 15 * 60 * 1000;
+              localStorage.setItem(
+                "token_expiration",
+                newExpirationTime.toString()
+              );
+
+              config.headers.Authorization = `Bearer ${newAccess}`;
               return config;
             }
           }
         } catch (error) {
-          console.error('Failed to refresh token proactively:', error);
-          // Continue with request even if refresh failed, 
-          // the response interceptor will handle 401 if needed
+          console.error("Proactive refresh failed:", error);
+          // Let response interceptor handle 401 fallback
         }
       }
     }
-    
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error: AxiosError) => {
-    console.error('Request error:', error);
+  (error: AxiosError) => Promise.reject(error)
+);
+
+// Response interceptor
+api.interceptors.response.use(
+  (response: AxiosResponse) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as CustomAxiosRequestConfig;
+
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry
+    ) {
+      originalRequest._retry = true;
+      try {
+        const refresh = localStorage.getItem("refresh_token");
+        if (!refresh) throw new Error("No refresh token available");
+
+        const response = await axios.post(`${API_URL}/token/refresh/`, {
+          refresh,
+        });
+
+        const newAccess = response.data.access;
+        localStorage.setItem("access_token", newAccess);
+
+        if (response.data.refresh) {
+          localStorage.setItem("refresh_token", response.data.refresh);
+        }
+
+        api.defaults.headers.common["Authorization"] = `Bearer ${newAccess}`;
+        return api(originalRequest);
+      } catch (err) {
+        // Refresh token expired/invalid → force logout
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        localStorage.removeItem("token_expiration");
+
+        toast.error("Your session has expired. Please log in again.", {
+          position: "top-center",
+          autoClose: 3000,
+        });
+
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 3200);
+
+        return Promise.reject(err);
+      }
+    }
+
     return Promise.reject(error);
   }
 );
 
-// Add a response interceptor
-api.interceptors.response.use(
-  (response: AxiosResponse) => {
-    console.log('Response successful:', {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-      url: response.config.url
-    });
-    return response;
-  },
-  async (error: AxiosError) => {
-    console.error('Response error:', {
-      message: error.message,
-      response: error.response ? {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data
-      } : null,
-      request: error.config ? {
-        url: error.config.url,
-        method: error.config.method,
-        headers: error.config.headers
-      } : null
-    });
-    
-    const originalRequest = error.config as CustomAxiosRequestConfig;
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
-      originalRequest._retry = true;
-      try {
-        const refresh = localStorage.getItem('refresh_token');
-        if (!refresh) throw new Error('No refresh token available');
-        const response = await api.post('/token/refresh/', { refresh });
-        const token = response.data.access;
-        localStorage.setItem('access_token', token);
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        return api(originalRequest);
-      } catch (err) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
-        return Promise.reject(err);
-      }
-    }
-    return Promise.reject(error);
-  }
-);
+
 
 // Enhance debug helper with more detailed logging
 export const debugAPI = {
