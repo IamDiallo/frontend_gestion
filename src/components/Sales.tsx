@@ -496,24 +496,55 @@ const PaymentInfoCard = styled(Card)(() => ({
     if (!currentProduct || currentQuantity <= 0 || !selectedZone) {
       return;
     }
-    
+
     setError(null);
     setStockError(null);
+
     try {
-      // Check if we have available stock for this product in the selected zone
-      const stockAvailability = await InventoryAPI.checkStockAvailability(currentProduct.id, selectedZone, currentQuantity);
+      // Check stock availability in selected zone
+      const stockAvailability = await InventoryAPI.checkStockAvailability(
+        currentProduct.id,
+        selectedZone,
+        currentQuantity
+      );
+
       if (!stockAvailability.available) {
         setStockError('Stock insuffisant pour ce produit dans la zone sélectionnée.');
         return;
       }
-      setSelectedProducts([
-        ...selectedProducts,
-        { product: currentProduct, quantity: currentQuantity },
-      ]);
+
+      setSelectedProducts(prevProducts => {
+        const existingIndex = prevProducts.findIndex(
+          item => item.product.id === currentProduct.id
+        );
+
+        if (existingIndex >= 0) {
+          // If product already exists, increment quantity
+          const updatedProducts = [...prevProducts];
+          const existingItem = updatedProducts[existingIndex];
+          const newQuantity = existingItem.quantity + currentQuantity;
+
+          updatedProducts[existingIndex] = {
+            ...existingItem,
+            quantity: newQuantity,
+          };
+
+          return updatedProducts;
+        } else {
+          // Add as a new product line
+          return [
+            ...prevProducts,
+            { product: currentProduct, quantity: currentQuantity },
+          ];
+        }
+      });
+
       setAvailableStock(prev => ({
         ...prev,
-        [currentProduct.id!]: (prev[currentProduct.id!] || 0) - currentQuantity
+        [currentProduct.id!]: (prev[currentProduct.id!] || 0) - currentQuantity,
       }));
+
+      // Reset state
       setCurrentProduct(null);
       setCurrentQuantity(1);
       setStockError(null);
@@ -551,7 +582,8 @@ const PaymentInfoCard = styled(Card)(() => ({
       setError(null);
       const subtotal = Number(calculateTotal().toFixed(2));
       const tax_amount = Number((subtotal * 0.20).toFixed(2)); 
-      const total_amount = Number((subtotal + tax_amount).toFixed(2));      const newSale: Sale = {
+      const total_amount = Number((subtotal + tax_amount).toFixed(2));      
+      const newSale: Sale = {
         client: selectedClient.id!,
         zone: selectedZone,
         date: new Date().toISOString().split('T')[0],
@@ -560,6 +592,7 @@ const PaymentInfoCard = styled(Card)(() => ({
         discount_amount: 0,
         tax_amount,
         total_amount,
+        remaining_amount: total_amount,
         notes: 'Créé depuis l\'application',
         items: selectedProducts.map((item) => ({
           product: item.product.id!,

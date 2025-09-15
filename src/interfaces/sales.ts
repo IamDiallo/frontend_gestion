@@ -22,6 +22,7 @@ export interface Sale {
   discount_amount: number;
   tax_amount: number;
   total_amount: number;
+  remaining_amount?: number;
   notes?: string;
   created_by?: number;
   items?: SaleItem[]; // Making items optional to support update operations
