@@ -2195,8 +2195,6 @@ const Treasury = () => {
                     required
                     value={formatNumberDisplay(paymentAmount)}
                     onChange={(e) => {
-                      // For account payments, don't restrict the amount - allow credit payments
-                      // Users should be able to enter any amount up to the sale balance
                       const newValue = validateAmountInput(e.target.value, paymentAmount); // Remove maxValue restriction
                       setPaymentAmount(newValue);
                     }}

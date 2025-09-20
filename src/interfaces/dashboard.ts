@@ -1,5 +1,6 @@
 // Dashboard-specific interfaces for API responses and component props
 import { SalesData } from '../services/api';
+import { Account } from './business';
 
 export interface ApiResponse<T> {
   results?: T[];
@@ -19,7 +20,6 @@ export interface SalesResponseData {
 export interface ClientResponseItem {
   id: number;
   name: string;
-  account: number | null;
-  account_balance: number;
+  account: number
   [key: string]: unknown;
 }

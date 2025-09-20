@@ -581,7 +581,7 @@ const PaymentInfoCard = styled(Card)(() => ({
     try {
       setError(null);
       const subtotal = Number(calculateTotal().toFixed(2));
-      const tax_amount = Number((subtotal * 0.20).toFixed(2)); 
+      const tax_amount = Number((subtotal * 0.00).toFixed(2)); 
       const total_amount = Number((subtotal + tax_amount).toFixed(2));      
       const newSale: Sale = {
         client: selectedClient.id!,
@@ -956,7 +956,7 @@ const PaymentInfoCard = styled(Card)(() => ({
     try {
       setError(null);
       const subtotal = Number(calculateTotal().toFixed(2));
-      const tax_amount = Number((subtotal * 0.20).toFixed(2)); 
+      const tax_amount = Number((subtotal * 0.00).toFixed(2)); 
       const total_amount = Number((subtotal + tax_amount).toFixed(2));
       
       const newQuote: ApiQuote = {
@@ -1411,6 +1411,16 @@ const PaymentInfoCard = styled(Card)(() => ({
         );
       }
     },
+    {
+      field: 'payment_status',
+      headerName: t('payment'),
+      flex: 1,
+      renderCell: (params: GridRenderCellParams) => {
+        if (!params.row || !params.row.payment_status) return <></>;
+        
+        return <StatusChip status={params.row.payment_status} />;
+      }
+    },
     { 
       field: 'status', 
       headerName: t('status'), 
@@ -1450,16 +1460,6 @@ const PaymentInfoCard = styled(Card)(() => ({
             )}
           </Box>
         );
-      }
-    },
-    {
-      field: 'payment_status',
-      headerName: t('payment'),
-      flex: 1,
-      renderCell: (params: GridRenderCellParams) => {
-        if (!params.row || !params.row.payment_status) return <></>;
-        
-        return <StatusChip status={params.row.payment_status} />;
       }
     },
     {

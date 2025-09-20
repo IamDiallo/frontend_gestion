@@ -22,7 +22,7 @@ import {
   LinearProgress,
   Tooltip
 } from '@mui/material';
-import { ClientsAPI } from '../services/api';
+import { ClientsAPI, AccountsAPI } from '../services/api';
 import { StandardDataGrid, StatsCard } from './common';
 import {
   Assessment,
@@ -60,7 +60,7 @@ import {
   type LowStockProduct,
   type InventoryStats,
   type ClientWithAccount,
-  type AccountStatement
+  type AccountStatement,
 } from '../services/api';
 import {
   type ApiResponse,
@@ -184,22 +184,21 @@ const Dashboard = () => {
                           ((clientsData as ApiResponse<ClientResponseItem>).results ? (clientsData as ApiResponse<ClientResponseItem>).results : []);
       console.log('Processed response data:', responseData);
       
-      // For now, let's create mock data for clients with account balances if the API returns clients
-      // but doesn't have account_balance field
+      const accounts = await AccountsAPI.getByType("client");
       const clientsWithAccounts = (responseData as ClientResponseItem[])
-        .map((client: ClientResponseItem, index) => {
-          // If the client doesn't have account_balance, create mock data
-          const balance = client.account_balance ?? (1000000 + (index * 500000) + Math.random() * 2000000);
+        .map((client: ClientResponseItem) => {
+          const account = accounts.find(acc => acc.id === client.account);
+
           return {
             id: client.id,
             name: client.name,
-            balance: balance,
-            account: client.account ?? index + 1,
-            account_balance: balance,
-            last_transaction_date: undefined
+            balance: account ? account.current_balance : 0, 
+            account: account.id || client.account, 
+            account_balance: account ? account.current_balance : 0,
+            last_transaction_date:  undefined,
           };
         })
-        .filter(client => client.account_balance > 0); // Only include clients with positive balances
+        .filter(client => client.balance > 0); // Only include clients with positive balances
       
       console.log('Clients with accounts:', clientsWithAccounts);
       setClientBalances(clientsWithAccounts);
