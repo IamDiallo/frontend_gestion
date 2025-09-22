@@ -43,6 +43,8 @@ import {
   DeleteDialog 
 } from './common';
 import { t } from '../utils/translations';
+import { printFacture, printDevis } from '../utils/printUtils';
+
 import { 
   validateIntegerInput, 
   validateDecimalInput, 
@@ -63,10 +65,10 @@ import {
   AttachMoney,
   Check,
   Cancel,
-  CheckCircle,
+  CheckCircle,  
   ElectricBolt,
   Payments,
-  Warning
+  Warning,
 } from '@mui/icons-material';
 import { SalesAPI, ClientsAPI, ProductsAPI, InventoryAPI, ZonesAPI, InvoicesAPI, QuotesAPI } from '../services/api';
 import { Sale, Client, Zone, ApiSaleItem, ApiInvoice, ApiQuote, ExtendedInvoice } from '../interfaces/sales';
@@ -1592,7 +1594,10 @@ const PaymentInfoCard = styled(Card)(() => ({
             <IconButton 
               color="secondary" 
               size="small"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                printFacture(params.row);
+              }}
             >
               <PrintIcon fontSize="small" />
             </IconButton>
@@ -1696,7 +1701,10 @@ const PaymentInfoCard = styled(Card)(() => ({
             <IconButton 
               color="secondary" 
               size="small"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                printDevis(params.row);
+              }}
             >
               <PrintIcon fontSize="small" />
             </IconButton>
@@ -2200,6 +2208,7 @@ const PaymentInfoCard = styled(Card)(() => ({
                     if (!row || row.id === undefined) return Math.random();
                     return row.id;
                   }}
+                  showToolbar
                 />
               </>
             )}
@@ -2311,31 +2320,35 @@ const PaymentInfoCard = styled(Card)(() => ({
               </Button>
             </Box>
 
-            {invoiceLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <>
-                {error && (
-                  <Alert severity="error" sx={{ mb: 3 }}>
-                    {error}
-                  </Alert>
-                )}
-                <StandardDataGrid
-                  rows={filteredInvoices}
-                  columns={invoiceColumns}
-                  paginationModel={invoicePaginationModel}
-                  onPaginationModelChange={setInvoicePaginationModel}
-                  loading={invoiceLoading}
-                  getRowId={(row) => {
-                    // Safely handle undefined or null rows
-                    if (!row || row.id === undefined) return Math.random();
-                    return row.id;
-                  }}
-                />
-              </>
-            )}
+           <Paper sx={{ mb: 3, overflow: 'hidden' }} elevation={2}>
+
+              {/* Content */}
+              {invoiceLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <>
+                  {error && (
+                    <Alert severity="error" sx={{ mb: 3 }}>
+                      {error}
+                    </Alert>
+                  )}
+
+                  <StandardDataGrid
+                    rows={filteredInvoices}
+                    columns={invoiceColumns}
+                    paginationModel={invoicePaginationModel}
+                    onPaginationModelChange={setInvoicePaginationModel}
+                    loading={invoiceLoading}
+                    getRowId={(row) => row?.id ?? Math.random()}
+                    showToolbar
+                  />
+                </>
+              )}
+            </Paper>
+
+
           </TabPanel>
           <TabPanel value={tabValue} index={2}>
             <Box sx={{ 
@@ -2444,6 +2457,9 @@ const PaymentInfoCard = styled(Card)(() => ({
               </Button>
             </Box>
 
+          <Paper sx={{ mb: 3, overflow: 'hidden' }} elevation={2}>
+          
+            {/* Content */}
             {quoteLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                 <CircularProgress />
@@ -2455,20 +2471,20 @@ const PaymentInfoCard = styled(Card)(() => ({
                     {error}
                   </Alert>
                 )}
+
                 <StandardDataGrid
                   rows={filteredQuotes}
                   columns={quoteColumns}
                   paginationModel={quotePaginationModel}
                   onPaginationModelChange={setQuotePaginationModel}
                   loading={quoteLoading}
-                  getRowId={(row) => {
-                    // Safely handle undefined or null rows
-                    if (!row || row.id === undefined) return Math.random();
-                    return row.id;
-                  }}
+                  getRowId={(row) => row?.id ?? Math.random()}
+                  showToolbar // 🔑 same as ventes & factures
                 />
               </>
             )}
+          </Paper>
+
           </TabPanel>
         </Paper>
         {/* Add Sale Dialog */}

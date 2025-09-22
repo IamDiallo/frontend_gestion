@@ -2326,35 +2326,6 @@ const InventoryManagement: React.FC = () => {
                       </Box>
                     );
                   }
-                },
-                {
-                  field: 'balance',
-                  headerName: 'Solde',
-                  flex: 0.7,
-                  align: 'right',
-                  headerAlign: 'right',
-                  renderCell: (params: GridRenderCellParams) => {
-                    if (params.value === null || params.value === undefined || params.value === '') {
-                      return '';
-                    }
-                    // Balance should show FG instead of unit symbol
-                    const isPositive = parseFloat(params.value) >= 0;
-                    return (
-                      <Box sx={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'flex-end',
-                        color: isPositive ? 'text.primary' : 'error.main',
-                        fontWeight: 'bold',
-                        backgroundColor: isPositive ? 'transparent' : 'error.light',
-                        px: isPositive ? 0 : 1,
-                        py: isPositive ? 0 : 0.5,
-                        borderRadius: isPositive ? 0 : 1
-                      }}>
-                        {parseFloat(params.value).toLocaleString('fr-FR')} FG
-                      </Box>
-                    );
-                  }
                 }
               ]}
               pagination

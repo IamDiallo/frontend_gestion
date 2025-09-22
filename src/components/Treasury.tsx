@@ -1448,7 +1448,8 @@ const Treasury = () => {
                         />
                       )}
                     />
-                  </Grid>                  <Grid item xs={12} sm={6} md={3}>
+                  </Grid>                  
+                  <Grid item xs={12} sm={6} md={3}>
                     <Stack direction="row" spacing={1}>
                       <Button
                         variant="contained"
