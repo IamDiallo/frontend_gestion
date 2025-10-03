@@ -123,7 +123,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
       to: "/treasury",
       icon: <AccountBalance />,
       text: "Trésorerie",
-      requiredPermission: "view_cashflow"
+      requiredPermission: "view_cashreceipt"
     },
     // Admin section
     {

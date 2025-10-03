@@ -20,6 +20,7 @@ import {
   FormControl,
   InputLabel,
   Select,
+  Chip,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -57,6 +58,8 @@ import {
   InventoryDialogFormData,
   InventoryDialogStatus
 } from './common';
+
+import { getPaymentStatusColor, getPaymentStatusLabel } from '../utils/treasuryUtils';
 
 import {
   InventoryAPI, ZonesAPI, ProductsAPI, SuppliersAPI
@@ -1591,6 +1594,22 @@ const InventoryManagement: React.FC = () => {
                     {(params.value || 0).toLocaleString('fr-FR')} GNF
                   </Box>
                 )
+              },
+              {
+                field: 'payment_status',
+                headerName: 'Statut de Paiement',
+                flex: 1,
+                renderCell: (params: GridRenderCellParams) => {
+                  if (!params.value) return null;
+                  return (
+                    <Chip
+                      label={getPaymentStatusLabel(params.value)}
+                      color={getPaymentStatusColor(params.value)}
+                      size="small"
+                      sx={{ fontWeight: 'medium' }}
+                    />
+                  );
+                }
               },
               {
                 field: 'actions',

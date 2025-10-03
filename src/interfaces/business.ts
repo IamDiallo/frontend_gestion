@@ -36,8 +36,8 @@ export interface Account {
   account_number?: string;
   account_type?: string;
   currency?: number;
-  initial_balance: number;
-  current_balance: number;
+  initial_balance: number | string;
+  current_balance: number | string;
   description?: string;
   is_active: boolean;
 }
@@ -67,9 +67,9 @@ export interface AccountStatement {
   transaction_type_display: string;
   reference: string;
   description: string;
-  debit: number;
-  credit: number;
-  balance: number;
+  debit: number | string;
+  credit: number | string;
+  balance: number | string;
   account: number; // Account ID that this statement belongs to
   account_name?: string; // Added to match backend serializer
 }
@@ -82,6 +82,41 @@ export interface OutstandingSale {
   paid_amount: number;
   balance: number;
   payment_status: string;
+}
+
+export interface OutstandingSupply {
+  id: number;
+  reference: string;
+  date: string;
+  total_amount: number;
+  paid_amount: number;
+  remaining_amount: number;
+  payment_status: 'unpaid' | 'partially_paid' | 'paid' | 'overpaid';
+  supplier?: number;
+  supplier_name?: string;
+  status?: string;
+}
+
+export interface SupplierPaymentResponse {
+  success: boolean;
+  message: string;
+  payment: {
+    id: number;
+    reference: string;
+    amount: string;
+    date: string;
+  };
+  supply: {
+    id: number;
+    reference: string;
+    payment_status: string;
+    workflow_state: string;
+    total_amount: string;
+    paid_amount: string;
+    remaining_amount: string;
+  };
+  supplier_balance: number;
+  company_balance: number;
 }
 
 export interface ClientDeposit {
@@ -104,6 +139,20 @@ export interface ActualClientBalanceResponse {
   sales_count: number;
   payments_count: number;
   outstanding_sales?: OutstandingSale[];
+  statements?: AccountStatement[];
+}
+
+export interface ActualSupplierBalanceResponse {
+  supplier_id: number;
+  supplier_name: string;    
+  total_purchases: number;
+  total_account_credits: number;
+  purchase_payments_from_account: number;
+  balance: number;
+  purchases_count: number;
+  payments_count: number;
+  outstanding_purchases?: OutstandingSale[];
+  outstanding_supplies?: OutstandingSupply[];
   statements?: AccountStatement[];
 }
 

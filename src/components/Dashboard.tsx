@@ -69,6 +69,13 @@ import {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
+// Helper function to safely parse balance values that might be strings or numbers
+const parseBalance = (value: string | number | undefined | null): number => {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === 'number') return value;
+  return parseFloat(value) || 0;
+};
+
 const Dashboard = () => {
   const theme = useTheme();
   const [reportType, setReportType] = useState('sales');
@@ -188,13 +195,14 @@ const Dashboard = () => {
       const clientsWithAccounts = (responseData as ClientResponseItem[])
         .map((client: ClientResponseItem) => {
           const account = accounts.find(acc => acc.id === client.account);
+          const balance = account ? parseBalance(account.current_balance) : 0;
 
           return {
             id: client.id,
             name: client.name,
-            balance: account ? account.current_balance : 0, 
-            account: account.id || client.account, 
-            account_balance: account ? account.current_balance : 0,
+            balance: balance, 
+            account: account?.id || client.account, 
+            account_balance: balance,
             last_transaction_date:  undefined,
           };
         })

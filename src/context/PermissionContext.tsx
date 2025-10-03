@@ -143,7 +143,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
     const hasAccess = userPermissions.includes(permissionToCheck);
     
     // Debug logging for important permission checks
-    if (['view_sale', 'view_client', 'view_product', 'view_stock', 'view_cashflow', 'change_user'].includes(permissionToCheck)) {
+    if (['view_sale', 'view_client', 'view_product', 'view_stock', 'view_cashreceipt', 'change_user'].includes(permissionToCheck)) {
       console.log('🔍 Permission Check:', {
         requested: permission,
         checking: permissionToCheck,

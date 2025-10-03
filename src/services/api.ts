@@ -1,5 +1,5 @@
 import axios, { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { Client } from '../interfaces/business';
+import { Client, OutstandingSupply, SupplierPaymentResponse } from '../interfaces/business';
 import { Product, ProductCategory, UnitOfMeasure } from '../interfaces/products';
 import { Sale, Invoice, Quote, OutstandingSale, SaleDeletionResponse, SaleCanDeleteResponse } from '../interfaces/sales';
 import { User, Group, UserCreateRequest } from '../interfaces/users';
@@ -605,6 +605,17 @@ export const ProductsAPI = {
 
 // Suppliers API
 export const SuppliersAPI = {
+   getById: async (id: number) => {
+    try {
+      debugAPI.logRequest(`/suppliers/${id}/`, 'GET');
+      const response = await api.get(`/suppliers/${id}/`);
+      debugAPI.logResponse(`/suppliers/${id}/`, response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError(`/suppliers/${id}/`, error);
+      throw error;
+    }
+  },
   getAll: async (): Promise<Supplier[]> => {
     try {
       debugAPI.logRequest('/suppliers/', 'GET');
@@ -728,7 +739,45 @@ export const InventoryAPI = {
       throw error;
     }
   },
-    createStockTransfer: async (data: CreateStockTransfer): Promise<StockTransfer> => {
+
+  // Fetch stock supplies with outstanding payments for a specific supplier
+  getOutstandingSuppliesBySupplier: async (supplierId: number): Promise<OutstandingSupply[]> => {
+    try {
+      debugAPI.logRequest(`/stock-supplies/outstanding_by_supplier/?supplier_id=${supplierId}`, 'GET');
+      const response = await api.get(`/stock-supplies/outstanding_by_supplier/?supplier_id=${supplierId}`);
+      
+      const supplies = Array.isArray(response.data) ? response.data : 
+        (response.data && response.data.results ? response.data.results : []);
+      
+      debugAPI.logResponse(`/stock-supplies/outstanding_by_supplier/`, { ...response, data: supplies });
+      return supplies;
+    } catch (error) {
+      debugAPI.logError(`/stock-supplies/outstanding_by_supplier/`, error);
+      throw error;
+    }
+  },
+
+  // Pay supplier from company account for a stock supply
+  paySupplierFromAccount: async (
+    supplyId: number, 
+    paymentData: { 
+      amount: number, 
+      description?: string, 
+      company_account: number 
+    }
+  ): Promise<SupplierPaymentResponse> => {
+    try {
+      debugAPI.logRequest(`/stock-supplies/${supplyId}/pay_from_account/`, 'POST', paymentData);
+      const response = await api.post(`/stock-supplies/${supplyId}/pay_from_account/`, paymentData);
+      debugAPI.logResponse(`/stock-supplies/${supplyId}/pay_from_account/`, response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError(`/stock-supplies/${supplyId}/pay_from_account/`, error);
+      throw error;
+    }
+  },
+
+  createStockTransfer: async (data: CreateStockTransfer): Promise<StockTransfer> => {
     try {
       debugAPI.logRequest('/stock-transfers/', 'POST', data);
       const response = await api.post('/stock-transfers/', data);
@@ -972,42 +1021,37 @@ export const SalesAPI = {
   // Fetch sales with outstanding payments for a specific client
   getOutstandingSalesByClient: async (clientId: number): Promise<OutstandingSale[]> => {
     try {
-      debugAPI.logRequest(`/sales/?client=${clientId}&payment_status=unpaid,partially_paid`, 'GET');
-      const response = await api.get(`/sales/?client=${clientId}&payment_status=unpaid,partially_paid`);
+      debugAPI.logRequest(`/sales/outstanding_by_client/?client_id=${clientId}`, 'GET');
+      const response = await api.get(`/sales/outstanding_by_client/?client_id=${clientId}`);
       
-      // Get the sales
       const sales = Array.isArray(response.data) ? response.data : 
         (response.data && response.data.results ? response.data.results : []);
       
-      // Fetch payment information for each sale to determine the actual balance
-      const outstandingSales: OutstandingSale[] = await Promise.all(sales.map(async (sale) => {
-        // Get all payments (cash receipts) for this sale
-        const payments = await TreasuryAPI.getCashReceiptsBySale(sale.id);
-        
-        // Calculate the total amount paid
-        const paidAmount = payments.reduce((sum, receipt) => sum + receipt.amount, 0);
-        
-        // Calculate the remaining balance
-        const balance = sale.total_amount - paidAmount;
-        
-        return {
-          id: sale.id,
-          reference: sale.reference,
-          date: sale.date,
-          total_amount: sale.total_amount,
-          paid_amount: paidAmount,
-          balance: balance,
-          payment_status: sale.payment_status
-        };
-      }));
-      
-      debugAPI.logResponse(`/sales/outstanding/${clientId}`, { data: outstandingSales });
-      return outstandingSales;
+      debugAPI.logResponse(`/sales/outstanding_by_client/`, { ...response, data: sales });
+      return sales;
     } catch (error) {
-      debugAPI.logError(`/sales/outstanding/${clientId}`, error);
+      debugAPI.logError(`/sales/outstanding_by_client/`, error);
       throw error;
     }
   },
+  
+  // Fetch sales with outstanding payments for a specific supplier
+  getOutstandingSalesBySupplier: async (supplierId: number): Promise<OutstandingSale[]> => {
+    try {
+      debugAPI.logRequest(`/sales/outstanding_by_supplier/?supplier_id=${supplierId}`, 'GET');
+      const response = await api.get(`/sales/outstanding_by_supplier/?supplier_id=${supplierId}`);
+      
+      const sales = Array.isArray(response.data) ? response.data : 
+        (response.data && response.data.results ? response.data.results : []);
+      
+      debugAPI.logResponse(`/sales/outstanding_by_supplier/`, { ...response, data: sales });
+      return sales;
+    } catch (error) {
+      debugAPI.logError(`/sales/outstanding_by_supplier/`, error);
+      throw error;
+    }
+  },
+  
   payFromAccount: async (saleId: number, paymentData: { amount: number, description?: string, company_account?: number | null }): Promise<AccountPaymentResponse> => {
     try {
       debugAPI.logRequest(`/sales/${saleId}/pay_from_account/`, 'POST', paymentData);
@@ -1830,19 +1874,38 @@ export const TreasuryAPI = {
     }
   },
     // Client Balance
-  getClientBalance: async (clientId: number): Promise<unknown> => {
+  // Client Balance (DEPRECATED - use getAccountBalance or getAccountInfo instead)
+  getBalance: async (id: number, type?: string): Promise<unknown> => {
     try {
-      const endpoint = `/account-statements/client_balance/?client_id=${clientId}`;
+      const params = new URLSearchParams();
+      params.append('id', id.toString());
+      params.append('type', type);
+      const endpoint = `/account-statements/balance/?${params.toString()}`;
       debugAPI.logRequest(endpoint, 'GET');
       const response = await api.get(endpoint);
       debugAPI.logResponse(endpoint, response);
       return response.data;
     } catch (error) {
-      debugAPI.logError(`/account-statements/client_balance/?client_id=${clientId}`, error);
+      debugAPI.logError(`/account-statements/balance/?id=${id}`, error);
       throw error;
     }
   },
-    // Account Statements
+
+  // Get ONLY the balance for an account
+  getAccountBalance: async (accountId: number): Promise<{ balance: number; account_id: number }> => {
+    try {
+      const endpoint = `/account-statements/balance/?account_id=${accountId}`;
+      debugAPI.logRequest(endpoint, 'GET');
+      const response = await api.get(endpoint);
+      debugAPI.logResponse(endpoint, response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError(`/account-statements/balance/?account_id=${accountId}`, error);
+      throw error;
+    }
+  },
+
+  // Get ONLY account statements (no balance)
   getAccountStatements: async (accountId?: number): Promise<unknown[]> => {
     try {
       let endpoint = '/account-statements/';
@@ -1860,6 +1923,29 @@ export const TreasuryAPI = {
       return statements;
     } catch (error) {
       debugAPI.logError('/account-statements/', error);
+      throw error;
+    }
+  },
+
+  // Get comprehensive account info: balance + statements + outstanding sales/supplies
+  getAccountInfo: async (
+    accountId: number, 
+    entityType: 'client' | 'supplier'
+  ): Promise<{
+    balance: number;
+    statements: unknown[];
+    outstanding_sales: unknown[];
+    outstanding_supplies?: unknown[];
+  }> => {
+    try {
+      const endpoint = `/account-statements/account_info/?account_id=${accountId}&type=${entityType}`;
+      debugAPI.logRequest(endpoint, 'GET');
+      const response = await api.get(endpoint);
+      debugAPI.logResponse(endpoint, response);
+      return response.data;
+    } catch (error) {
+      const endpoint = `/account-statements/account_info/?account_id=${accountId}&type=${entityType}`;
+      debugAPI.logError(endpoint, error);
       throw error;
     }
   },

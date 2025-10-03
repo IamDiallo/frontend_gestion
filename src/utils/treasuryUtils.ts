@@ -1,4 +1,4 @@
-import { OutstandingSale, AccountStatement, AccountTransfer, ClientDeposit } from '../interfaces/business';
+import { AccountStatement, AccountTransfer, ClientDeposit } from '../interfaces/business';
 
 /**
  * Format currency amount to GNF
@@ -80,33 +80,6 @@ export const getTransactionTypeColor = (type: string): 'success' | 'error' | 'de
     default:
       return 'default';
   }
-};
-
-/**
- * Filter outstanding sales for a specific client
- * Using any type because backend returns additional fields not in interfaces
- */
-export const filterOutstandingSales = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  salesData: any[], 
-  clientId: number
-): OutstandingSale[] => {
-  return salesData
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .filter((sale: any) => 
-      sale.client === clientId && 
-      (sale.payment_status === 'unpaid' || sale.payment_status === 'partially_paid')
-    )
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .map((sale: any) => ({
-      id: sale.id || 0,
-      reference: sale.reference || '',
-      date: sale.date,
-      total_amount: sale.total_amount,
-      paid_amount: sale.paid_amount || 0,
-      balance: sale.remaining_amount || sale.total_amount,
-      payment_status: sale.payment_status || 'unpaid'
-    }));
 };
 
 /**

@@ -63,6 +63,11 @@ export interface StockSupply {
   date: string;
   status: 'pending' | 'received' | 'partial' | 'cancelled';
   items: StockSupplyItem[]; // Use the updated item interface
+  // Payment tracking fields
+  total_amount?: number;
+  paid_amount?: number;
+  remaining_amount?: number;
+  payment_status?: 'unpaid' | 'partially_paid' | 'paid' | 'overpaid';
   created_at?: string;
   updated_at?: string;
   // Add other fields like supplier_name, zone_name if needed

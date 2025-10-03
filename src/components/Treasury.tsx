@@ -9,8 +9,6 @@ import {
 } from '@mui/material';
 import { DataGrid, GridRenderCellParams, GridToolbar } from '@mui/x-data-grid';
 import { styled } from '@mui/material/styles';
-import PrintIcon from '@mui/icons-material/Print';
-import AddCircleIcon from '@mui/icons-material/AddCircle';
 import SearchIcon from '@mui/icons-material/Search';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import PaymentIcon from '@mui/icons-material/Payment';
@@ -18,27 +16,26 @@ import ReceiptIcon from '@mui/icons-material/Receipt';
 import PersonIcon from '@mui/icons-material/Person';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import WalletIcon from '@mui/icons-material/Wallet';
 import MoneyOffIcon from '@mui/icons-material/MoneyOff';
 import MoneyIcon from '@mui/icons-material/Money';
 import FilterListIcon from '@mui/icons-material/FilterList';
-import DownloadIcon from '@mui/icons-material/Download';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import WarningIcon from '@mui/icons-material/Warning';
 
 import { useSnackbar } from 'notistack';
-import { ClientsAPI, SettingsAPI, TreasuryAPI, SalesAPI, AccountsAPI } from '../services/api';
-import { Client, Account, ClientDeposit, TabPanelProps, OutstandingSale, AccountStatement, ActualClientBalanceResponse, AccountTransfer } from '../interfaces/business';
+import { ClientsAPI,SuppliersAPI, SettingsAPI, TreasuryAPI, SalesAPI, AccountsAPI, InventoryAPI } from '../services/api';
+import { Client, Account, ClientDeposit, TabPanelProps, OutstandingSale, OutstandingSupply, AccountStatement, ActualClientBalanceResponse,ActualSupplierBalanceResponse, Supplier } from '../interfaces/business';
 import PermissionGuard from './PermissionGuard';
 import { 
   formatCurrency, 
   formatDate, 
   getPaymentStatusColor, 
   getPaymentStatusLabel,
-  filterOutstandingSales,
   mapStatementsForGrid,
   getTransactionTypeChipStyles,
-  validateTransferForm,
-  validateDepositForm
+  validateDepositForm,
+  getTransactionTypeColor
 } from '../utils/treasuryUtils';
 
 import { 
@@ -64,6 +61,333 @@ const ClientInfoCard = styled(Card)(() => ({
   },
 }));
 
+// Helper function to safely parse balance values that might be strings or numbers
+const parseBalance = (value: string | number | undefined | null): number => {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === 'number') return value;
+  return parseFloat(value) || 0;
+};
+
+function TransactionsTabs({ clientBalanceData }) {
+  const [tab, setTab] = useState(0);
+  const mapStatementsForJournal = (statements: AccountStatement[]) =>
+  statements.map((tx, index) => ({
+    id: index,
+    date: tx.date,
+    libelle: tx.transaction_type === "sale" ? "Vente de marchandises" : "Paiement",
+    debit: tx.transaction_type === "sale" ? parseFloat(tx.debit as string) : 0,
+    credit: tx.transaction_type === "cash_receipt" ? parseFloat(tx.credit as string) : 0,
+    solde: parseFloat(tx.balance as string),
+  }));
+  return (
+    <Paper sx={{ mb: 3, overflow: 'hidden' }} elevation={2}>
+      {/* Onglets */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'primary.light' }}>
+        <Tabs
+          value={tab}
+          onChange={(_, newValue) => setTab(newValue)}
+          textColor="inherit"
+          indicatorColor="secondary"
+        >
+          <Tab 
+            label={`Journal Caisse Client (${mapStatementsForJournal(clientBalanceData.statements)?.length || 0})`} 
+            sx={{ color: 'primary.contrastText' }} 
+          />
+          <Tab 
+            label={`Historique des transactions (${clientBalanceData.statements?.length || 0})`} 
+            sx={{ color: 'primary.contrastText' }} 
+          />
+          
+        </Tabs>
+      </Box>
+
+      {/* Contenu selon l'onglet */}
+      <Box sx={{ 
+        height: Math.min(Math.max(350, (clientBalanceData.statements?.length || 0) * 55 + 180), 400), 
+        width: '100%' 
+      }}>
+        {tab === 0 ? (
+          // 👉 Nouveau tableau (Journal Caisse Client)
+         
+           <DataGrid
+            rows={mapStatementsForJournal(clientBalanceData.statements)}
+            columns={[
+              { field: 'date', headerName: 'Date', width: 120 },
+              { field: 'libelle', headerName: 'Libellé', flex: 1, minWidth: 200 },
+              { 
+                field: 'debit', 
+                headerName: 'Débit', 
+                width: 150, 
+                align: 'right', 
+                headerAlign: 'right',
+                renderCell: (params) => params.value > 0 ? `${formatCurrency(params.value)}` : ""
+              },
+              { 
+                field: 'credit', 
+                headerName: 'Crédit', 
+                width: 150,
+                align: 'right', 
+                headerAlign: 'right',
+                renderCell: (params) => params.value > 0 ? `${formatCurrency(params.value)}` : ""
+              },
+              { 
+                field: 'solde', 
+                headerName: 'Solde', 
+                width: 160,
+                align: 'right', 
+                headerAlign: 'right',
+                renderCell: (params) => `${formatCurrency(params.value)}`
+              },
+            ]}
+            getRowClassName={(params) => params.indexRelativeToCurrentPage % 2 === 0 ? '' : 'even-row' } 
+            initialState={{ pagination: { paginationModel: { pageSize: 10, page: 0 }, }, sorting: { sortModel: [{ field: 'rawDate', sort: 'desc' }], }, }} 
+            density="compact" disableRowSelectionOnClick slots={{ toolbar: GridToolbar, }} 
+            slotProps={{ toolbar: { showQuickFilter: true, quickFilterProps: { debounceMs: 300 }, }, }} 
+            sx={{ border: 'none', '& .MuiDataGrid-cell:focus': { outline: 'none', }, '& .even-row': { bgcolor: 'rgba(0, 0, 0, 0.02)', }, '& .MuiDataGrid-columnHeaders': { backgroundColor: 'rgba(0, 0, 0, 0.03)', borderRadius: 0, } }}
+            pageSizeOptions={[5, 10, 25, 50]}
+
+          />
+        ) : (
+          // 👉 Ton tableau existant (Historique)
+
+          <DataGrid
+            rows={mapStatementsForGrid(clientBalanceData.statements)}
+            columns={[
+              { field: 'date', headerName: 'Date', width: 120 },
+              { field: 'reference', headerName: 'Référence', width: 140 },
+              { field: 'type', headerName: 'Type', width: 180, renderCell: (params: GridRenderCellParams) => { const value = params.value || ''; return ( <Chip label={value} size="small" sx={getTransactionTypeChipStyles(value)} /> ); }  },
+              { field: 'description', headerName: 'Description', flex: 1, minWidth: 200 },
+              { field: 'debit', headerName: 'Débit', width: 130, align: 'right', renderCell: (params) => params.value > 0 ? `${formatCurrency(params.value)}` : "" },
+              { field: 'credit', headerName: 'Crédit', width: 130, align: 'right', renderCell: (params) => params.value > 0 ? `${formatCurrency(params.value)}` : "" },
+              { field: 'balance', headerName: 'Solde', width: 140, align: 'right', renderCell: (params) => params.value > 0 ? `${formatCurrency(params.value)}` : "" },
+            ]}
+            getRowClassName={(params) => params.indexRelativeToCurrentPage % 2 === 0 ? '' : 'even-row' } 
+            initialState={{ pagination: { paginationModel: { pageSize: 10, page: 0 }, }, sorting: { sortModel: [{ field: 'rawDate', sort: 'desc' }], }, }} 
+            density="compact" disableRowSelectionOnClick slots={{ toolbar: GridToolbar, }} 
+            slotProps={{ toolbar: { showQuickFilter: true, quickFilterProps: { debounceMs: 300 }, }, }} 
+            sx={{ border: 'none', '& .MuiDataGrid-cell:focus': { outline: 'none', }, '& .even-row': { bgcolor: 'rgba(0, 0, 0, 0.02)', }, '& .MuiDataGrid-columnHeaders': { backgroundColor: 'rgba(0, 0, 0, 0.03)', borderRadius: 0, } }}
+            pageSizeOptions={[5, 10, 25, 50]}
+          />
+        )}
+      </Box>
+    </Paper>
+  );
+}
+
+function SupplierTransactionsTabs({ supplierBalanceData }) {
+  const [tab, setTab] = useState(0);
+  const mapStatementsForJournal = (statements: AccountStatement[]) =>
+    statements.map((tx, index) => ({
+      id: index,
+      date: tx.date,
+      libelle: tx.transaction_type === "supply" ? "Approvisionnement" : "Paiement fournisseur",
+      debit: tx.transaction_type === "supplier_cash_payment" ? parseFloat(tx.debit as string) : 0,
+      credit: tx.transaction_type === "supply" ? parseFloat(tx.credit as string) : 0,
+      solde: parseFloat(tx.balance as string),
+    }));
+  
+  return (
+    <Paper sx={{ mb: 3, overflow: 'hidden' }} elevation={2}>
+      {/* Onglets */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'primary.light' }}>
+        <Tabs
+          value={tab}
+          onChange={(_, newValue) => setTab(newValue)}
+          textColor="inherit"
+          indicatorColor="secondary"
+        >
+          <Tab 
+            label={`Journal Caisse Fournisseur (${mapStatementsForJournal(supplierBalanceData.statements)?.length || 0})`} 
+            sx={{ color: 'primary.contrastText' }} 
+          />
+          <Tab 
+            label={`Historique des transactions (${supplierBalanceData.statements?.length || 0})`} 
+            sx={{ color: 'primary.contrastText' }} 
+          />
+        </Tabs>
+      </Box>
+
+      {/* Contenu selon l'onglet */}
+      <Box sx={{ 
+        height: Math.min(Math.max(350, (supplierBalanceData.statements?.length || 0) * 55 + 180), 400), 
+        width: '100%' 
+      }}>
+        {tab === 0 ? (
+          // Journal Caisse Fournisseur
+          <DataGrid
+            rows={mapStatementsForJournal(supplierBalanceData.statements)}
+            columns={[
+              { field: 'date', headerName: 'Date', width: 120 },
+              { field: 'libelle', headerName: 'Libellé', flex: 1, minWidth: 200 },
+              { 
+                field: 'debit', 
+                headerName: 'Débit', 
+                width: 150, 
+                align: 'right', 
+                headerAlign: 'right',
+                renderCell: (params) => params.value > 0 ? `${formatCurrency(params.value)}` : ""
+              },
+              { 
+                field: 'credit', 
+                headerName: 'Crédit', 
+                width: 150,
+                align: 'right', 
+                headerAlign: 'right',
+                renderCell: (params) => params.value > 0 ? `${formatCurrency(params.value)}` : ""
+              },
+              { 
+                field: 'solde', 
+                headerName: 'Solde', 
+                width: 160,
+                align: 'right', 
+                headerAlign: 'right',
+                renderCell: (params) => `${formatCurrency(params.value)}`
+              },
+            ]}
+            getRowClassName={(params) => params.indexRelativeToCurrentPage % 2 === 0 ? '' : 'even-row' } 
+            initialState={{ pagination: { paginationModel: { pageSize: 10, page: 0 }, }, sorting: { sortModel: [{ field: 'rawDate', sort: 'desc' }], }, }} 
+            density="compact" disableRowSelectionOnClick slots={{ toolbar: GridToolbar, }} 
+            slotProps={{ toolbar: { showQuickFilter: true, quickFilterProps: { debounceMs: 300 }, }, }} 
+            sx={{ border: 'none', '& .MuiDataGrid-cell:focus': { outline: 'none', }, '& .even-row': { bgcolor: 'rgba(0, 0, 0, 0.02)', }, '& .MuiDataGrid-columnHeaders': { backgroundColor: 'rgba(0, 0, 0, 0.03)', borderRadius: 0, } }}
+            pageSizeOptions={[5, 10, 25, 50]}
+          />
+        ) : (
+          // Historique des transactions
+          <DataGrid
+            rows={mapStatementsForGrid(supplierBalanceData.statements)}
+            columns={[
+              { field: 'date', headerName: 'Date', width: 120 },
+              { field: 'reference', headerName: 'Référence', width: 140 },
+              { field: 'type', headerName: 'Type', width: 180, renderCell: (params: GridRenderCellParams) => { const value = params.value || ''; return ( <Chip label={value} size="small" sx={getTransactionTypeChipStyles(value)} /> ); }  },
+              { field: 'description', headerName: 'Description', flex: 1, minWidth: 200 },
+              { field: 'debit', headerName: 'Débit', width: 130, align: 'right', renderCell: (params) => params.value > 0 ? `${formatCurrency(params.value)}` : "" },
+              { field: 'credit', headerName: 'Crédit', width: 130, align: 'right', renderCell: (params) => params.value > 0 ? `${formatCurrency(params.value)}` : "" },
+              { field: 'balance', headerName: 'Solde', width: 140, align: 'right', renderCell: (params) => params.value > 0 ? `${formatCurrency(params.value)}` : "" },
+            ]}
+            getRowClassName={(params) => params.indexRelativeToCurrentPage % 2 === 0 ? '' : 'even-row' } 
+            initialState={{ pagination: { paginationModel: { pageSize: 10, page: 0 }, }, sorting: { sortModel: [{ field: 'rawDate', sort: 'desc' }], }, }} 
+            density="compact" disableRowSelectionOnClick slots={{ toolbar: GridToolbar, }} 
+            slotProps={{ toolbar: { showQuickFilter: true, quickFilterProps: { debounceMs: 300 }, }, }} 
+            sx={{ border: 'none', '& .MuiDataGrid-cell:focus': { outline: 'none', }, '& .even-row': { bgcolor: 'rgba(0, 0, 0, 0.02)', }, '& .MuiDataGrid-columnHeaders': { backgroundColor: 'rgba(0, 0, 0, 0.03)', borderRadius: 0, } }}
+            pageSizeOptions={[5, 10, 25, 50]}
+          />
+        )}
+      </Box>
+    </Paper>
+  );
+}
+
+function AccountMovementsTabs({ accountMovements, loadingMovements, allAccounts }) {
+  const [tab, setTab] = useState(0);
+
+  // Exemple: transformation pour Journal Caisse
+  const mapMovementsForJournal = (movements: AccountStatement[]) =>
+    movements.map((m, index) => ({
+      id: index,
+      date: m.date,
+      libelle: m.transaction_type === "sale" ? "Vente de marchandises" : "Paiement",
+      debit: m.transaction_type === "sale" ? parseFloat(m.debit as string) : 0,
+      credit: m.transaction_type === "cash_receipt" ? parseFloat(m.credit as string) : 0,
+      solde: parseFloat(m.balance as string),
+    }));
+
+  return (
+    <Paper sx={{ width: '100%' }} elevation={2}>
+      {/* Onglets */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'primary.light', px: 2 }}>
+        <Tabs
+          value={tab}
+          onChange={(_, newValue) => setTab(newValue)}
+          textColor="inherit"
+          indicatorColor="secondary"
+        >
+          <Tab 
+            label={`Journal Caisse Client (${mapMovementsForJournal(accountMovements).length})`} 
+            sx={{ color: 'primary.contrastText' }} 
+          />
+          <Tab 
+            label={`Mouvements (${accountMovements.length})`} 
+            sx={{ color: 'primary.contrastText' }} 
+          />
+          
+        </Tabs>
+      </Box>
+
+      {/* Contenu */}
+      <Box
+        sx={{
+          height: Math.min(Math.max(400, accountMovements.length * 55 + 200), 800),
+          width: '100%',
+        }}
+      >
+        {loadingMovements ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+            <CircularProgress />
+          </Box>
+        ) : accountMovements.length > 0 ? (
+          tab === 0 ? (
+            // 👉 Nouveau tableau : Journal Caisse
+           
+            <DataGrid
+              rows={mapMovementsForJournal(accountMovements)}
+              columns={[
+                { field: 'date', headerName: 'Date', width: 120 },
+                { field: 'libelle', headerName: 'Libellé', flex: 1, minWidth: 200 },
+                { field: 'debit', headerName: 'Débit', width: 150, align: 'right', renderCell: (params) => params.value > 0 ? formatCurrency(params.value) : null },
+                { field: 'credit', headerName: 'Crédit', width: 150, align: 'right', renderCell: (params) => params.value > 0 ? formatCurrency(params.value) : null },
+                { field: 'solde', headerName: 'Solde', width: 160, align: 'right', renderCell: (params) => formatCurrency(params.value) },
+              ]}
+              density="compact"
+              disableRowSelectionOnClick
+              slots={{ toolbar: GridToolbar }}
+            />
+          ) : (
+            // 👉 Tableau existant : Mouvements
+
+             <DataGrid
+              rows={accountMovements.map(movement => ({
+                id: movement.id,
+                account_name: allAccounts.find(a => a.id === Number(movement.account))?.name || 'N/A',
+                date: formatDate(movement.date),
+                rawDate: movement.date,
+                reference: movement.reference,
+                transaction_type_display: movement.transaction_type_display,
+                transaction_type: movement.transaction_type,
+                description: movement.description,
+                debit: movement.debit,
+                credit: movement.credit,
+                balance: movement.balance
+              }))}
+              columns={[
+                { field: 'date', headerName: 'Date', width: 120 },
+                { field: 'account_name', headerName: 'Compte', width: 150 },
+                { field: 'reference', headerName: 'Référence', width: 140 },
+                { field: 'transaction_type_display', headerName: 'Type', width: 180,  
+                          renderCell: (params) => ( <Chip label={params.value} size="small" 
+                          color={getTransactionTypeColor(params.row.transaction_type)} sx={{ fontWeight: 500 }} /> ) },
+                { field: 'description', headerName: 'Description', flex: 1, minWidth: 200 },
+                { field: 'debit', headerName: 'Débit', width: 130, align: 'right', renderCell: (params) => params.value > 0 ? formatCurrency(params.value) : null },
+                { field: 'credit', headerName: 'Crédit', width: 130, align: 'right', renderCell: (params) => params.value > 0 ? formatCurrency(params.value) : null },
+                { field: 'balance', headerName: 'Solde', width: 140, align: 'right', renderCell: (params) => formatCurrency(params.value) },
+              ]}
+              density="compact"
+              disableRowSelectionOnClick
+              slots={{ toolbar: GridToolbar }}
+            />
+          )
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <MoneyOffIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              Aucun mouvement trouvé
+            </Typography>
+  
+          </Box>
+        )}
+      </Box>
+    </Paper>
+  );
+}
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
 
@@ -96,17 +420,21 @@ const Treasury = () => {
   const [tabValue, setTabValue] = useState(0);
   // Client account management state
   const [clients, setClients] = useState<Client[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [clientBalanceData, setClientBalanceData] = useState<ActualClientBalanceResponse | null>(null);
+  const [supplierBalanceData, setSupplierBalanceData] = useState<ActualSupplierBalanceResponse | null>(null);
+
   const [loadingClientData, setLoadingClientData] = useState(false);
+  const [loadingSupplierData, setLoadingSupplierData] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
+  const [supplierSearch, setSupplierSearch] = useState('');
   // Add client pagination state
   const [clientPage, setClientPage] = useState(0);
+  const [supplierPage, setSupplierPage] = useState(0);
   const [clientRowsPerPage, setClientRowsPerPage] = useState(6);
-
-  const [depositAccountTouched, setDepositAccountTouched] = useState(false);
-  const [depositAccountError, setDepositAccountError] = useState<string | null>(null);
-
+  const [supplierRowsPerPage, setSupplierRowsPerPage] = useState(6);
 
   // Payment related state variables
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -114,6 +442,14 @@ const Treasury = () => {
   const [paymentAmount, setPaymentAmount] = useState(0);
   const [paymentDescription, setPaymentDescription] = useState('');
   const [processingPayment, setProcessingPayment] = useState(false);
+
+  // Supplier payment state variables
+  const [showSupplierPaymentModal, setShowSupplierPaymentModal] = useState(false);
+  const [selectedSupplyForPayment, setSelectedSupplyForPayment] = useState<OutstandingSupply | null>(null);
+  const [supplierPaymentAmount, setSupplierPaymentAmount] = useState(0);
+  const [supplierPaymentDescription, setSupplierPaymentDescription] = useState('');
+  const [processingSupplierPayment, setProcessingSupplierPayment] = useState(false);
+  const [selectedSupplierCompanyAccount, setSelectedSupplierCompanyAccount] = useState<Account | null>(null);
 
   // New state for company account selection in payment
   const [selectedCompanyAccount, setSelectedCompanyAccount] = useState<Account | null>(null);
@@ -147,19 +483,9 @@ const Treasury = () => {
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');  const [endDate, setEndDate] = useState<string>('');
-  const [accountTransfer, setAccountTransfer] = useState<Partial<AccountTransfer>>({
-    from_account: undefined,
-    to_account: undefined,
-    amount: 0,
-    transfer_date: new Date().toISOString().split('T')[0],
-    reference_number: '',
-    notes: ''
-  });
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showSuccessSnackbar, setShowSuccessSnackbar] = useState(false);
-  const [processingTransfer, setProcessingTransfer] = useState(false);
-  const [showTransferModal, setShowTransferModal] = useState(false);
   
   // Use notistack hook for notifications
   const { enqueueSnackbar } = useSnackbar();
@@ -217,21 +543,22 @@ const Treasury = () => {
   useEffect(() => {
     // Initial client fetch
     fetchClients();
+    fetchSuppliers();
     fetchAllAccounts();
 
 
     // Deposit modal resource fetch
     if (showDepositModal) {
       fetchResources();
-      setDepositAccountTouched(false);
-      setDepositAccountError(null);
-    } else {
-      setDepositAccountTouched(false);
-      setDepositAccountError(null);
+    }
+
+    // Company accounts tab fetch
+    if (tabValue === 2) {
+      fetchAllAccounts();
     }
 
     // Account movements tab fetch
-    if (tabValue === 1) {
+    if (tabValue === 3) {
       fetchAccountMovements();
     }
   }, [showDepositModal, tabValue, fetchAllAccounts, fetchAccountMovements]);
@@ -241,73 +568,19 @@ const Treasury = () => {
     client.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
     (client.contact_person && client.contact_person.toLowerCase().includes(clientSearch.toLowerCase()))
   );
-  
+
+  const filteredSuppliers = suppliers.filter((supplier) =>
+    supplier.name.toLowerCase().includes(supplierSearch.toLowerCase()) ||
+    (supplier.contact_person && supplier.contact_person.toLowerCase().includes(supplierSearch.toLowerCase()))
+  );
+
   // Get paginated client list
   const paginatedClients = filteredClients
     .slice(clientPage * clientRowsPerPage, clientPage * clientRowsPerPage + clientRowsPerPage);
 
-  const handleCreateTransfer = async () => {
-    try {
-      setProcessingTransfer(true);
-      setError(null);
-
-      // Validate required fields using utility function
-      const validationError = validateTransferForm(accountTransfer);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-
-      // Generate reference if not provided
-      const transfer = {
-        ...accountTransfer,
-        reference_number: accountTransfer.reference_number || `TR-${Date.now()}`
-      };
-
-      await TreasuryAPI.createAccountTransfer(transfer as AccountTransfer);
-      
-      enqueueSnackbar('Transfert créé avec succès', { variant: 'success' });
-      setShowTransferModal(false);
-      
-      // Reset form
-      setAccountTransfer({
-        from_account: undefined,
-        to_account: undefined,
-        amount: 0,
-        transfer_date: new Date().toISOString().split('T')[0],
-        reference_number: '',
-        notes: ''
-      });
-      
-      // Refresh movements
-      fetchAccountMovements();
-    } catch (err) {
-      console.error('Error creating transfer:', err);
-      setError('Erreur lors de la création du transfert. Veuillez réessayer.');
-    } finally {
-      setProcessingTransfer(false);
-    }
-  };
-
-  const getTransactionTypeColor = (type: string) => {
-    switch (type) {
-      case 'client_payment':
-      case 'cash_receipt':
-      case 'transfer_in':
-      case 'sale':
-      case 'deposit':
-        return 'success';
-      case 'supplier_payment':
-      case 'cash_payment':
-      case 'transfer_out':
-      case 'expense':
-      case 'purchase':
-        return 'error';
-      default:
-        return 'default';
-    }
-  };
-
+  // Get paginated supplier list
+  const paginatedSuppliers = filteredSuppliers
+    .slice(supplierPage * supplierRowsPerPage, supplierPage * supplierRowsPerPage + supplierRowsPerPage);
 
   // Fetch clients from API
   const fetchClients = async () => {
@@ -317,6 +590,17 @@ const Treasury = () => {
     } catch (err) {
       console.error('Error fetching clients:', err);
       setError('Erreur lors du chargement des clients. Veuillez réessayer plus tard.');
+    }
+  };
+
+  // Fetch suppliers from API
+  const fetchSuppliers = async () => {
+    try {
+      const data = await SuppliersAPI.getAll();
+      setSuppliers(data);
+    } catch (err) {
+      console.error('Error fetching suppliers:', err);
+      setError('Erreur lors du chargement des fournisseurs. Veuillez réessayer plus tard.');
     }
   };
 
@@ -464,69 +748,190 @@ const Treasury = () => {
     setPaymentDescription('');
   };
 
+  // Handle supplier payment
+  const handleSupplierPayment = async () => {
+    if (!selectedSupplyForPayment || !selectedSupplier) {
+      setError('Veuillez sélectionner un approvisionnement pour payer.');
+      return;
+    }
+
+    if (supplierPaymentAmount <= 0) {
+      setError('Le montant du paiement doit être supérieur à zéro.');
+      return;
+    }
+
+    if (!selectedSupplierCompanyAccount) {
+      setError('Veuillez sélectionner un compte de l\'entreprise pour effectuer le paiement.');
+      return;
+    }
+
+    setProcessingSupplierPayment(true);
+    setError(null);
+
+    try {
+      const response = await InventoryAPI.paySupplierFromAccount(
+        selectedSupplyForPayment.id,
+        {
+          amount: supplierPaymentAmount,
+          description: supplierPaymentDescription || `Paiement pour l'approvisionnement ${selectedSupplyForPayment.reference} au fournisseur`,
+          company_account: selectedSupplierCompanyAccount.id
+        }
+      );
+
+      const paymentAmount = parseFloat(response.payment.amount);
+      let successMsg = `Paiement de ${formatCurrency(paymentAmount)} traité avec succès. Nouveau solde fournisseur: ${formatCurrency(response.supplier_balance)}, Solde entreprise: ${formatCurrency(response.company_balance)}`;
+
+      if (response.supply.payment_status === 'partially_paid') {
+        const paidAmount = parseFloat(response.supply.paid_amount);
+        const totalAmount = parseFloat(response.supply.total_amount);
+        const remainingAmount = parseFloat(response.supply.remaining_amount);
+        
+        successMsg += `\nPaiement partiel: ${formatCurrency(paidAmount)} payé, ${formatCurrency(remainingAmount)} restant.`;
+        
+        enqueueSnackbar(
+          <Box>
+            <Typography variant="subtitle2">Paiement partiel enregistré</Typography>
+            <Typography variant="body2">
+              {formatCurrency(paidAmount)} payé sur {formatCurrency(totalAmount)}
+              <br />
+              {formatCurrency(remainingAmount)} restant à payer
+            </Typography>
+          </Box>,
+          {
+            variant: 'info',
+            autoHideDuration: 8000,
+            anchorOrigin: {
+              vertical: 'bottom',
+              horizontal: 'center',
+            }
+          }
+        );
+      }
+
+      setSuccessMessage(successMsg);
+      setShowSuccessSnackbar(true);
+      setTimeout(() => {
+        setShowSuccessSnackbar(false);
+        setSuccessMessage(null);
+      }, 6000);
+
+      // Reload supplier data
+      if (selectedSupplier) {
+        if (supplierBalanceData) {
+          setPreviousBalance(supplierBalanceData.balance);
+        }
+        loadSupplierAccountData(selectedSupplier.id);
+      }
+
+      // Close modal and reset form
+      setShowSupplierPaymentModal(false);
+      resetSupplierPaymentForm();
+      setSelectedSupplierCompanyAccount(null);
+      setProcessingSupplierPayment(false);
+    } catch (err) {
+      console.error('Error processing supplier payment:', err);
+      setError('Erreur lors du traitement du paiement fournisseur. Veuillez réessayer.');
+      setProcessingSupplierPayment(false);
+    }
+  };
+
+  // Reset supplier payment form
+  const resetSupplierPaymentForm = () => {
+    setSelectedSupplyForPayment(null);
+    setSupplierPaymentAmount(0);
+    setSupplierPaymentDescription('');
+  };
+
   // Handle client pagination
   const handleChangeClientPage = (event: unknown, newPage: number) => {
     setClientPage(newPage);
   };
 
+  // Handle supplier pagination
+  const handleChangeSupplierPage = (event: unknown, newPage: number) => {
+    setSupplierPage(newPage);
+  }
+
   const handleChangeClientRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
     setClientRowsPerPage(parseInt(event.target.value, 10));
     setClientPage(0);
-  };  // Load client account data
-  const loadClientAccountData = async (clientId: number) => {
+  }; 
+  const handleChangeSupplierRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSupplierRowsPerPage(parseInt(event.target.value, 10));
+    setSupplierPage(0);
+  }
+
+  // Consolidated function to load account data for clients or suppliers
+  const loadAccountData = async (entityId: number, entityType: 'client' | 'supplier') => {
     try {
-      setLoadingClientData(true);
-      setError(null);      
-      // Store previous balance before loading new data
-      const prevBalance = clientBalanceData ? clientBalanceData.balance : null;
+      // Set the appropriate loading state
+      if (entityType === 'client') {
+        setLoadingClientData(true);
+      } else {
+        setLoadingSupplierData(true);
+      }
+      setError(null);
       
-      // First get the client data to get the account ID
-      const clientData = selectedClient || await ClientsAPI.getById(clientId);
-      const clientAccountId = clientData?.account;
+      // Store previous balance for feedback
+      const currentData = entityType === 'client' ? clientBalanceData : supplierBalanceData;
+      const prevBalance = currentData ? currentData.balance : null;
       
-      console.log('Loading data for client:', clientId, 'account:', clientAccountId);
-      console.log('Client data:', clientData);
+      // Get entity data to access account ID
+      const entityData = entityType === 'client' ? 
+        (selectedClient || await ClientsAPI.getById(entityId)) :
+        (selectedSupplier || await SuppliersAPI.getById(entityId));
+      const accountId = entityData?.account;
       
-      // Fetch client balance, account statements, and sales in parallel
-      const [balanceData, statementsData, salesData] = await Promise.all([
-        TreasuryAPI.getClientBalance(clientId),
-        // Filter statements by client's account ID directly at API level
-        clientAccountId ? TreasuryAPI.getAccountStatements(clientAccountId) : Promise.resolve([]),
-        SalesAPI.getAll() // Get all sales to filter for outstanding ones
-      ]);
+      if (!accountId) {
+        throw new Error(`No account found for this ${entityType === 'client' ? 'client' : 'fournisseur'}`);
+      }
       
-      console.log('Fetched statements for account', clientAccountId, ':', statementsData);
+      // Single API call for all comprehensive data
+      const accountInfo = await TreasuryAPI.getAccountInfo(accountId, entityType);
       
-      // No need to filter statements anymore since we already filtered at API level
-      const clientStatements = statementsData as AccountStatement[];
+      console.log(`${entityType} account info loaded:`, accountInfo);
       
-      console.log('Final client statements:', clientStatements.length, 'statements');
+      // Set the data with proper type handling
+      // The new API returns a simplified structure, so we cast through unknown
+      if (entityType === 'client') {
+        setClientBalanceData(accountInfo as unknown as ActualClientBalanceResponse);
+      } else {
+        setSupplierBalanceData(accountInfo as unknown as ActualSupplierBalanceResponse);
+      }
       
-      // Filter outstanding sales for the selected client (unpaid or partially paid)
-      // Using any type because backend returns additional fields like paid_amount, remaining_amount
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const outstandingSales: OutstandingSale[] = filterOutstandingSales(salesData as any[], clientId);
-      
-      // Combine the data
-      const combinedData = {
-        ...(balanceData as ActualClientBalanceResponse),
-        statements: clientStatements,
-        outstanding_sales: outstandingSales
-      } as ActualClientBalanceResponse;
-      
-      setClientBalanceData(combinedData);
-      setLoadingClientData(false);
-        // If previous balance exists and is different from new balance, show feedback
-      if (prevBalance !== null && (balanceData as ActualClientBalanceResponse).balance !== prevBalance) {
-        showBalanceUpdateFeedback(prevBalance, (balanceData as ActualClientBalanceResponse).balance);
+      // Show balance update feedback if balance changed
+      if (prevBalance !== null && accountInfo.balance !== prevBalance) {
+        showBalanceUpdateFeedback(prevBalance, accountInfo.balance);
       }
     } catch (err) {
-      console.error('Error loading client account data:', err);
-      setError('Erreur lors du chargement des données du compte client.');
-      setLoadingClientData(false);
-      setClientBalanceData(null);
+      console.error(`Error loading ${entityType} account data:`, err);
+      setError(`Erreur lors du chargement des données du compte ${entityType === 'client' ? 'client' : 'fournisseur'}.`);
+      
+      // Clear data
+      if (entityType === 'client') {
+        setClientBalanceData(null);
+      } else {
+        setSupplierBalanceData(null);
+      }
+    } finally {
+      // Set loading to false
+      if (entityType === 'client') {
+        setLoadingClientData(false);
+      } else {
+        setLoadingSupplierData(false);
+      }
     }
   };
+
+  // Wrapper functions for backwards compatibility and convenience
+  const loadClientAccountData = async (clientId: number) => {
+    await loadAccountData(clientId, 'client');
+  };
+
+  const loadSupplierAccountData = async (supplierId: number) => {
+    await loadAccountData(supplierId, 'supplier');
+  };
+  
   // Handle client selection change
   const handleClientChange = (client: Client | null) => {
     setSelectedClient(client);
@@ -542,6 +947,20 @@ const Treasury = () => {
       }));
     }
   };
+
+  const handleSupplierChange = (supplier: Supplier | null) => {
+    setSelectedSupplier(supplier);
+    if (supplier) {
+      loadSupplierAccountData(supplier.id);
+
+      // Pre-fill deposit form with client data
+      setNewDeposit(prev => ({
+        ...prev,
+        client: supplier.id,
+        account: supplier.account || null
+      }));
+    }
+  }
 
   // Handle creating a client deposit
   const handleCreateDeposit = async () => {
@@ -654,7 +1073,7 @@ const Treasury = () => {
   };
 
   return (
-    <PermissionGuard requiredPermission="view_cashflow" fallbackPath="/">
+    <PermissionGuard requiredPermission="view_cashreceipt" fallbackPath="/">
       <Box>
       <Box 
         sx={{
@@ -710,14 +1129,33 @@ const Treasury = () => {
             <Tab 
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <AccountBalanceIcon fontSize="small" />
-                  <span>Mouvements</span>
+                  <WalletIcon fontSize="small" />
+                  <span>Comptes Fournisseurs</span>
                 </Box>
               } 
               {...a11yProps(1)} 
             />
+            <Tab 
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <MoneyIcon fontSize="small" />
+                  <span>Comptes Entreprise</span>
+                </Box>
+              } 
+              {...a11yProps(2)} 
+            />
+            <Tab 
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ReceiptIcon fontSize="small" />
+                  <span>Mouvements</span>
+                </Box>
+              } 
+              {...a11yProps(3)} 
+            />
           </Tabs>
-        </Box>        {/* Client Accounts Tab */}
+        </Box>        
+        {/* Client Accounts Tab */}
         <TabPanel value={tabValue} index={0}>
           <Grid container spacing={3}>
             {!selectedClient ? (
@@ -922,7 +1360,7 @@ const Treasury = () => {
                                   },
                                 }}
                               >
-                                {clientBalanceData ? formatCurrency(clientBalanceData.balance) : formatCurrency(0)}
+                                {clientBalanceData.balance ? formatCurrency(clientBalanceData.balance) : formatCurrency(0)}
                               </Typography>
                             </Grow>
                             {previousBalance !== null && clientBalanceData && previousBalance !== clientBalanceData.balance && (
@@ -955,10 +1393,14 @@ const Treasury = () => {
                             </Button>
                             <Button
                               variant="outlined"
-                              startIcon={<PrintIcon />}
+                              startIcon={<ArrowBackIcon />}
+                              onClick={() => {
+                                setSelectedClient(null);
+                                setClientBalanceData(null);
+                              }}
                               size="small"
                             >
-                              Imprimer relevé
+                              Retour
                             </Button>
                           </Stack>
                         </Grid>
@@ -989,11 +1431,6 @@ const Treasury = () => {
                               Ventes non soldées ({clientBalanceData.outstanding_sales?.length || 0})
                             </Typography>
                             <Box>
-                              <Tooltip title="Exporter les données">
-                                <IconButton size="small" sx={{ color: 'warning.contrastText' }}>
-                                  <DownloadIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
                               <Tooltip title="Filtrer les ventes">
                                 <IconButton size="small" sx={{ color: 'warning.contrastText' }}>
                                   <FilterListIcon fontSize="small" />
@@ -1050,9 +1487,11 @@ const Treasury = () => {
                                   align: 'right',
                                   headerAlign: 'right',
                                   renderCell: (params) => (
-                                    <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 500 }}>
-                                      {formatCurrency(params.value)}
-                                    </Typography>
+                                    params.value > 0 ? (
+                                      <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 500 }}>
+                                        {formatCurrency(params.value)}
+                                      </Typography>
+                                    ) : null
                                   )
                                 },
                                 { 
@@ -1186,40 +1625,321 @@ const Treasury = () => {
                           </Box>
                         </Paper>
                       )}
-                      <Paper sx={{ mb: 3, overflow: 'hidden' }} elevation={2}>
-                        <Box sx={{ bgcolor: 'primary.light', px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Typography variant="subtitle1" fontWeight="bold" color="primary.contrastText">
-                            <ReceiptIcon sx={{ fontSize: 20, mr: 1, verticalAlign: 'text-bottom' }} />
-                            Historique des transactions ({clientBalanceData.statements?.length || 0})
+                     <TransactionsTabs clientBalanceData={clientBalanceData} />
+                    </Box>
+                  ) : (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px' }}>
+                      <CircularProgress />
+                    </Box>
+                  )}
+                </Grid>
+              </>
+            )}
+          </Grid>
+        </TabPanel>
+
+        {/* Supplier Accounts Tab */}
+        <TabPanel value={tabValue} index={1}>
+          <Grid container spacing={3}>
+             {! selectedSupplier ? (
+              <>
+                <Grid item xs={12}>
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="h6" gutterBottom>
+                      Sélectionner un fournisseur
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      label="Rechercher un fournisseur"
+                      variant="outlined"
+                      value={supplierSearch}
+                      onChange={(e) => setSupplierSearch(e.target.value)}
+                      InputProps={{
+                        startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />,
+                      }}
+                      sx={{ mb: 3 }}
+                    />
+                  </Box>
+                  
+                  {error && (
+                    <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+                      {error}
+                    </Alert>
+                  )}
+                  
+                  <Grid container spacing={2}>
+                    {paginatedSuppliers.map(supplier => (
+                        <Grid item xs={12} sm={6} md={4} key={supplier.id}>
+                          <ClientInfoCard
+                            onClick={() => handleSupplierChange(supplier)}
+                            sx={{
+                              cursor: 'pointer',
+                              height: '100%',
+                            }}
+                          >
+                            <CardContent>
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                  <Avatar sx={{ bgcolor: 'primary.main', mr: 1 }}>
+                                    {supplier.name.charAt(0).toUpperCase()}
+                                  </Avatar>
+                                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                                    {supplier.name}
+                                  </Typography>
+                                </Box>
+                                {supplier.is_active ? 
+                                  <Chip size="small" label="Actif" color="success" /> : 
+                                  <Chip size="small" label="Inactif" color="default" />
+                                }
+                              </Box>
+
+                              {supplier.contact_person && (
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                  Contact: {supplier.contact_person}
+                                </Typography>
+                              )}
+                              
+                              {supplier.phone && (
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                  Tél: {supplier.phone}
+                                </Typography>
+                              )}
+                              
+                              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+                                <Button 
+                                  variant="outlined" 
+                                  color="primary"
+                                  size="small"
+                                  startIcon={<AccountBalanceWalletIcon />}
+                                >
+                                  Consulter compte
+                                </Button>
+                              </Box>
+                            </CardContent>
+                          </ClientInfoCard>
+                        </Grid>
+                      ))}
+                    
+                    {filteredSuppliers.length === 0 && (
+                      <Grid item xs={12}>
+                        <Paper sx={{ p: 4, textAlign: 'center', bgcolor: 'background.default' }}>
+                          <PersonIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
+                          <Typography variant="h6" color="text.secondary" gutterBottom>
+                            Aucun s trouvé
                           </Typography>
-                          <Box>
-                            <Tooltip title="Exporter les données">
-                              <IconButton size="small" sx={{ color: 'primary.contrastText' }}>
-                                <DownloadIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Filtrer les transactions">
-                              <IconButton size="small" sx={{ color: 'primary.contrastText' }}>
-                                <FilterListIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Essayez d'autres termes de recherche
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                    )}
+                  </Grid>
+                  <TablePagination
+                    rowsPerPageOptions={[6, 12, 18]}
+                    component="div"
+                    count={filteredSuppliers.length}
+                    rowsPerPage={supplierRowsPerPage}
+                    page={supplierPage}
+                    onPageChange={handleChangeSupplierPage}
+                    onRowsPerPageChange={handleChangeSupplierRowsPerPage}
+                    labelRowsPerPage="Fournisseurs par page:"
+                    labelDisplayedRows={({ from, to, count }) => `${from}-${to} sur ${count}`}
+                  />
+                </Grid>
+              </>
+            ) : (
+              <>
+                {/* Single row layout with merged client info and balance */}
+                <Grid item xs={12}>
+                  {loadingSupplierData ? (
+                    <Card sx={{ mb: 3 }} elevation={2}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                          <CircularProgress />
+                          <Typography variant="body1" sx={{ ml: 2 }}>
+                            Chargement des données du client...
+                          </Typography>
                         </Box>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Card sx={{ mb: 3 }} elevation={2}>
+                      <CardContent>
+                        <Grid container alignItems="center" spacing={3}>
+                          {/* Client Info Section */}
+                          <Grid item xs={12} md={4}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                              <Avatar sx={{ bgcolor: 'primary.main', mr: 2, width: 56, height: 56 }}>
+                                {selectedSupplier.name.charAt(0).toUpperCase()}
+                              </Avatar>
+                              <Box>
+                                <Typography variant="h6" fontWeight="bold">
+                                  {selectedSupplier.name}
+                                </Typography>
+                                {selectedSupplier.contact_person && (
+                                  <Typography variant="body2" color="text.secondary">
+                                    {selectedSupplier.contact_person}
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Box>
+                            
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                              {selectedSupplier.phone && (
+                                <Chip 
+                                  icon={<Typography>📞</Typography>} 
+                                  label={selectedSupplier.phone} 
+                                  variant="outlined" 
+                                  size="small"
+                                />
+                              )}
+                              {selectedSupplier.email && (
+                                <Chip 
+                                  icon={<Typography>✉️</Typography>} 
+                                  label={selectedSupplier.email} 
+                                  variant="outlined" 
+                                  size="small"
+                                />
+                              )}
+                              {selectedSupplier.address && (
+                                <Chip 
+                                  icon={<Typography>🏠</Typography>} 
+                                  label={selectedSupplier.address} 
+                                  variant="outlined" 
+                                  size="small"
+                                />
+                              )}
+                            </Box>
+                          </Grid>
                         
-                        <Box sx={{ 
-                          height: Math.min(Math.max(350, (clientBalanceData.statements?.length || 0) * 55 + 180), 400), 
-                          width: '100%' 
-                        }}>
-                          {clientBalanceData.statements && clientBalanceData.statements.length > 0 ? (
+                        {/* Balance Section */}
+                        <Grid item xs={12} md={4}>
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography variant="body2" color="text.secondary" gutterBottom>
+                              Solde actuel
+                            </Typography>
+                            <Grow
+                              in={true}
+                              style={{ transformOrigin: '0 0 0' }}
+                              {...(balanceChangeHighlight ? { timeout: 1000 } : {})}
+                            >
+                              <Typography
+                                variant="h4" 
+                                sx={{ 
+                                  fontWeight: 'bold',
+                                  color: supplierBalanceData?.balance >= 0 ? 'success.main' : 'error.main',
+                                  transition: 'color 0.5s ease',
+                                  animation: balanceChangeHighlight ? 'pulse 2s infinite' : 'none',
+                                  '@keyframes pulse': {
+                                    '0%': {
+                                      opacity: 1,
+                                    },
+                                    '50%': {
+                                      opacity: 0.6,
+                                    },
+                                    '100%': {
+                                      opacity: 1,
+                                    },
+                                  },
+                                }}
+                              >
+                                {supplierBalanceData ? formatCurrency(supplierBalanceData.balance) : formatCurrency(0)}
+                              </Typography>
+                            </Grow>
+                            {previousBalance !== null && supplierBalanceData && previousBalance !== supplierBalanceData.balance && (
+                              <Slide direction="up" in={balanceChangeHighlight} mountOnEnter unmountOnExit>
+                                <Typography variant="caption" 
+                                  sx={{ 
+                                    color: supplierBalanceData.balance > previousBalance ? 'success.main' : 'error.main',
+                                    fontWeight: 'medium'
+                                  }}
+                                >
+                                  {supplierBalanceData.balance > previousBalance ? '↑' : '↓'} 
+                                  {formatCurrency(Math.abs(supplierBalanceData.balance - previousBalance))}
+                                </Typography>
+                              </Slide>
+                            )}
+                          </Box>
+                        </Grid>
+                        
+                        {/* Action Buttons Section */}
+                        <Grid item xs={12} md={4}>
+                          <Stack direction="row" spacing={1} justifyContent={{ xs: 'center', md: 'flex-end' }}>
+                            <Button
+                              variant="outlined"
+                              startIcon={<ArrowBackIcon />}
+                              onClick={() => {
+                                setSelectedSupplier(null);
+                                setSupplierBalanceData(null);
+                              }}
+                              size="small"
+                            >
+                              Retour
+                            </Button>
+                          </Stack>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                  )}
+                </Grid>
+
+                {/* Data sections */}
+                <Grid item xs={12}>
+                  {loadingSupplierData ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                      <CircularProgress />
+                    </Box>
+                  ) : error ? (
+                    <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+                      {error}
+                    </Alert>
+                  ) : supplierBalanceData ? (
+                    <Box>
+                      {/* Outstanding Supplies Section */}
+                      {supplierBalanceData.outstanding_supplies && supplierBalanceData.outstanding_supplies.length > 0 && (
+                        <Paper 
+                          elevation={2} 
+                          sx={{ 
+                            p: 3, 
+                            mb: 3,
+                            borderRadius: 2,
+                            border: '1px solid',
+                            borderColor: 'error.light'
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                            <WarningIcon sx={{ color: 'error.main', mr: 1 }} />
+                            <Typography variant="h6" sx={{ color: 'error.main', fontWeight: 'bold' }}>
+                              Approvisionnements non soldés ({supplierBalanceData.outstanding_supplies?.length || 0})
+                            </Typography>
+                          </Box>
+                          
+                          <Box sx={{ 
+                            width: '100%',
+                            '& .MuiDataGrid-root': {
+                              border: 'none',
+                            },
+                          }}>
                             <DataGrid
-                              rows={mapStatementsForGrid(clientBalanceData.statements)}
+                              autoHeight
+                              rows={(supplierBalanceData.outstanding_supplies || []).map((supply: OutstandingSupply) => ({
+                                id: supply.id,
+                                date: formatDate(supply.date),
+                                rawDate: supply.date,
+                                reference: supply.reference,
+                                total_amount: supply.total_amount,
+                                paid_amount: supply.paid_amount,
+                                balance: supply.remaining_amount,
+                                payment_status: supply.payment_status,
+                                actions: supply
+                              }))}
                               columns={[
                                 { 
                                   field: 'date', 
                                   headerName: 'Date', 
                                   width: 120,
                                   sortComparator: (v1, v2, param1, param2) => {
-                                    // Custom sort by raw date
                                     const d1 = new Date(param1.api.getCellValue(param1.id, 'rawDate'));
                                     const d2 = new Date(param2.api.getCellValue(param2.id, 'rawDate'));
                                     return d1.getTime() - d2.getTime();
@@ -1227,38 +1947,20 @@ const Treasury = () => {
                                 },
                                 { field: 'reference', headerName: 'Référence', width: 140 },
                                 { 
-                                  field: 'type', 
-                                  headerName: 'Type', 
-                                  width: 180,
-                                  renderCell: (params: GridRenderCellParams) => {
-                                    const value = params.value || '';
-                                    return (
-                                      <Chip 
-                                        label={value}
-                                        size="small"
-                                        sx={getTransactionTypeChipStyles(value)}
-                                      />
-                                    );
-                                  }
-                                },
-                                { field: 'description', headerName: 'Description', flex: 1, minWidth: 200 },
-                                { 
-                                  field: 'debit', 
-                                  headerName: 'Débit', 
-                                  width: 130, 
+                                  field: 'total_amount', 
+                                  headerName: 'Montant', 
+                                  width: 130,
                                   align: 'right',
                                   headerAlign: 'right',
                                   renderCell: (params) => (
-                                    params.value > 0 ? (
-                                      <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 500 }}>
-                                        {formatCurrency(params.value)}
-                                      </Typography>
-                                    ) : null
+                                    <Typography variant="body2" fontWeight="500">
+                                      {formatCurrency(params.value)}
+                                    </Typography>
                                   )
                                 },
                                 { 
-                                  field: 'credit', 
-                                  headerName: 'Crédit', 
+                                  field: 'paid_amount', 
+                                  headerName: 'Payé', 
                                   width: 130,
                                   align: 'right',
                                   headerAlign: 'right',
@@ -1273,7 +1975,7 @@ const Treasury = () => {
                                 { 
                                   field: 'balance', 
                                   headerName: 'Solde', 
-                                  width: 140,
+                                  width: 130,
                                   align: 'right',
                                   headerAlign: 'right',
                                   renderCell: (params) => (
@@ -1281,8 +1983,8 @@ const Treasury = () => {
                                       variant="body2" 
                                       fontWeight="bold"
                                       sx={{ 
-                                        color: params.value >= 0 ? 'success.main' : 'error.main',
-                                        backgroundColor: params.value >= 0 ? 'rgba(46, 125, 50, 0.1)' : 'rgba(211, 47, 47, 0.1)',
+                                        color: 'error.main',
+                                        backgroundColor: 'rgba(211, 47, 47, 0.1)',
                                         py: 0.5,
                                         px: 1,
                                         borderRadius: 1,
@@ -1291,30 +1993,71 @@ const Treasury = () => {
                                     >
                                       {formatCurrency(params.value)}
                                     </Typography>
-                                  )                                }
+                                  )
+                                },
+                                { 
+                                  field: 'payment_status', 
+                                  headerName: 'Statut', 
+                                  width: 140,
+                                  renderCell: (params) => (
+                                    <Chip
+                                      label={getPaymentStatusLabel(params.value)}
+                                      color={getPaymentStatusColor(params.value)}
+                                      size="small"
+                                      sx={{ fontWeight: 500 }}
+                                    />
+                                  )
+                                },
+                                { 
+                                  field: 'actions', 
+                                  headerName: 'Actions', 
+                                  width: 290,
+                                  align: 'center',
+                                  headerAlign: 'center',
+                                  sortable: false,
+                                  renderCell: (params) => (
+                                    <Tooltip title="Effectuer un paiement pour cet approvisionnement">
+                                      <Button
+                                        variant="contained"
+                                        color="warning"
+                                        size="medium"
+                                        startIcon={<PaymentIcon />}
+                                        sx={{
+                                          borderRadius: 2,
+                                          fontWeight: 'bold',
+                                          px: 2,
+                                          boxShadow: 2,
+                                          textTransform: 'none',
+                                        }}
+                                        onClick={() => {
+                                          const supply = params.value;
+                                          const actualBalance = supply.payment_status === 'unpaid' && supply.balance === 0 
+                                            ? supply.total_amount 
+                                            : supply.remaining_amount;
+
+                                          const supplyWithCorrectBalance = {
+                                            ...supply,
+                                            remaining_amount: actualBalance,
+                                            balance: actualBalance
+                                          };
+
+                                          setSelectedSupplyForPayment(supplyWithCorrectBalance);
+                                          setSupplierPaymentAmount(actualBalance);
+                                          setSupplierPaymentDescription(`Paiement pour l'approvisionnement ${supply.reference}`);
+                                          setShowSupplierPaymentModal(true);
+                                        }}
+                                      >
+                                        Effectuer le paiement
+                                      </Button>
+                                    </Tooltip>
+                                  )
+                                }
                               ]}
-                              getRowClassName={(params) => 
-                                params.indexRelativeToCurrentPage % 2 === 0 ? '' : 'even-row'
-                              }
-                              initialState={{
-                                pagination: {
-                                  paginationModel: { pageSize: 10, page: 0 },
-                                },
-                                sorting: {
-                                  sortModel: [{ field: 'rawDate', sort: 'desc' }],
-                                },
-                              }}
-                              density="compact"
+                              density="comfortable"
                               disableRowSelectionOnClick
-                              slots={{
-                                toolbar: GridToolbar,
-                              }}
-                              slotProps={{
-                                toolbar: {
-                                  showQuickFilter: true,
-                                  quickFilterProps: { debounceMs: 300 },
-                                },
-                              }}
+                              getRowClassName={(params) =>
+                                params.indexRelativeToCurrentPage % 2 === 0 ? 'even-row' : 'odd-row'
+                              }
                               sx={{
                                 border: 'none',
                                 '& .MuiDataGrid-cell:focus': {
@@ -1328,28 +2071,14 @@ const Treasury = () => {
                                   borderRadius: 0,
                                 }
                               }}
-                              pageSizeOptions={[5, 10, 25, 50]}
+                              pageSizeOptions={[5, 10, 25]}
                             />
-                          ) : (
-                            <Box sx={{ 
-                              display: 'flex', 
-                              flexDirection: 'column', 
-                              alignItems: 'center', 
-                              justifyContent: 'center', 
-                              height: '100%',
-                              color: 'text.secondary'
-                            }}>
-                              <ReceiptIcon sx={{ fontSize: 60, mb: 2, opacity: 0.5 }} />
-                              <Typography variant="h6" gutterBottom>
-                                Aucune transaction
-                              </Typography>
-                              <Typography variant="body2" sx={{ textAlign: 'center', maxWidth: 300 }}>
-                                Les transactions de ce client apparaîtront ici une fois qu'elles seront effectuées
-                              </Typography>
-                            </Box>
-                          )}
-                        </Box>
-                      </Paper>
+                          </Box>
+                        </Paper>
+                      )}
+                      
+                      {/* Supplier Transaction History Tabs */}
+                      <SupplierTransactionsTabs supplierBalanceData={supplierBalanceData} />
                     </Box>
                   ) : (
                     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px' }}>
@@ -1360,8 +2089,218 @@ const Treasury = () => {
               </>
             )}
           </Grid>
-        </TabPanel>        {/* Account Movements Tab */}
-        <TabPanel value={tabValue} index={1}>
+        </TabPanel>
+
+        {/* Company Accounts Tab */}
+        <TabPanel value={tabValue} index={2}>
+          <Grid container spacing={3}>
+            {/* Company Accounts Overview */}
+            <Grid item xs={12}>
+              <Typography variant="h5" gutterBottom sx={{ mb: 3, display: 'flex', alignItems: 'center', fontWeight: 'bold' }}>
+                <AccountBalanceIcon sx={{ mr: 1, fontSize: 32, color: 'primary.main' }} />
+                Comptes de l'Entreprise
+              </Typography>
+            </Grid>
+
+            {/* Summary Stats */}
+            <Grid item xs={12}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'success.light', height: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <WalletIcon sx={{ color: 'success.dark', mr: 1, fontSize: 28 }} />
+                        <Typography variant="body2" color="success.dark" fontWeight="medium">
+                          Total Caisses
+                        </Typography>
+                      </Box>
+                      <Typography variant="h4" fontWeight="bold" color="success.dark">
+                        {formatCurrency(
+                          allAccounts
+                            .filter(acc => acc.account_type === 'cash')
+                            .reduce((sum, acc) => sum + parseBalance(acc.current_balance), 0)
+                        )}
+                      </Typography>
+                      <Typography variant="caption" color="success.dark">
+                        {allAccounts.filter(acc => acc.account_type === 'cash').length} compte(s)
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'primary.light', height: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <AccountBalanceIcon sx={{ color: 'primary.dark', mr: 1, fontSize: 28 }} />
+                        <Typography variant="body2" color="primary.dark" fontWeight="medium">
+                          Total Banques
+                        </Typography>
+                      </Box>
+                      <Typography variant="h4" fontWeight="bold" color="primary.dark">
+                        {formatCurrency(
+                          allAccounts
+                            .filter(acc => acc.account_type === 'bank')
+                            .reduce((sum, acc) => sum + parseBalance(acc.current_balance), 0)
+                        )}
+                      </Typography>
+                      <Typography variant="caption" color="primary.dark">
+                        {allAccounts.filter(acc => acc.account_type === 'bank').length} compte(s)
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'info.light', height: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <AccountBalanceWalletIcon sx={{ color: 'info.dark', mr: 1, fontSize: 28 }} />
+                        <Typography variant="body2" color="info.dark" fontWeight="medium">
+                          Trésorerie Totale
+                        </Typography>
+                      </Box>
+                      <Typography variant="h4" fontWeight="bold" color="info.dark">
+                        {formatCurrency(
+                          allAccounts
+                            .filter(acc => acc.account_type !== 'client' && acc.account_type !== 'supplier')
+                            .reduce((sum, acc) => sum + parseBalance(acc.current_balance), 0)
+                        )}
+                      </Typography>
+                      <Typography variant="caption" color="info.dark">
+                        Liquidités disponibles
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ 
+                    bgcolor: allAccounts.some(acc => 
+                      (acc.account_type === 'cash' || acc.account_type === 'bank' || acc.account_type === 'internal') && 
+                      parseBalance(acc.current_balance) < 0
+                    ) ? 'error.light' : 'grey.100',
+                    height: '100%'
+                  }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <WarningIcon sx={{ 
+                          color: allAccounts.some(acc => 
+                            (acc.account_type === 'cash' || acc.account_type === 'bank' || acc.account_type === 'internal') && 
+                            parseBalance(acc.current_balance) < 0
+                          ) ? 'error.dark' : 'text.secondary',
+                          mr: 1,
+                          fontSize: 28
+                        }} />
+                        <Typography variant="body2" color="text.secondary" fontWeight="medium">
+                          Comptes négatifs
+                        </Typography>
+                      </Box>
+                      <Typography variant="h4" fontWeight="bold">
+                        {allAccounts.filter(acc => 
+                          (acc.account_type === 'cash' || acc.account_type === 'bank' || acc.account_type === 'internal') && 
+                          parseBalance(acc.current_balance) < 0
+                        ).length}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Nécessite attention
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+            </Grid>
+
+            {/* Individual Account Cards */}
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom sx={{ mt: 2, mb: 2 }}>
+                Détails des comptes
+              </Typography>
+              <Grid container spacing={2}>
+                {allAccounts
+                  .filter(acc => acc.account_type !== 'client' && acc.account_type !== 'supplier')
+                  .map((account) => (
+                    <Grid item xs={12} sm={6} md={4} key={account.id}>
+                      <Card 
+                        elevation={2}
+                        sx={{ 
+                          height: '100%',
+                          border: parseBalance(account.current_balance) < 0 ? 2 : 1,
+                          borderColor: parseBalance(account.current_balance) < 0 ? 'error.main' : 'divider',
+                          transition: 'all 0.2s',
+                          '&:hover': {
+                            transform: 'translateY(-4px)',
+                            boxShadow: 6
+                          }
+                        }}
+                      >
+                        <CardContent>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                              {account.account_type === 'bank' ? (
+                                <AccountBalanceIcon sx={{ fontSize: 32, color: 'primary.main', mr: 1 }} />
+                              ) : account.account_type === 'cash' ? (
+                                <WalletIcon sx={{ fontSize: 32, color: 'success.main', mr: 1 }} />
+                              ) : (
+                                <AccountBalanceWalletIcon sx={{ fontSize: 32, color: 'info.main', mr: 1 }} />
+                              )}
+                            </Box>
+                            <Chip 
+                              label={
+                                account.account_type === 'bank' ? 'Banque' : 
+                                account.account_type === 'cash' ? 'Caisse' : 
+                                'Interne'
+                              } 
+                              size="small" 
+                              color={
+                                account.account_type === 'bank' ? 'primary' : 
+                                account.account_type === 'cash' ? 'success' : 
+                                'info'
+                              }
+                            />
+                          </Box>
+                          
+                          <Typography variant="h6" fontWeight="bold" gutterBottom noWrap>
+                            {account.name}
+                          </Typography>
+                          
+                          <Divider sx={{ my: 2 }} />
+                          
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Typography variant="body2" color="text.secondary">
+                                Solde actuel
+                              </Typography>
+                              {parseBalance(account.current_balance) < 0 && (
+                                <Chip 
+                                  icon={<WarningIcon />}
+                                  label="Négatif" 
+                                  size="small" 
+                                  color="error"
+                                />
+                              )}
+                            </Box>
+                            <Typography 
+                              variant="h5" 
+                              fontWeight="bold"
+                              sx={{ 
+                                color: parseBalance(account.current_balance) >= 0 ? 'success.main' : 'error.main'
+                              }}
+                            >
+                              {formatCurrency(parseBalance(account.current_balance))}
+                            </Typography>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+              </Grid>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        {/* Account Movements Tab */}
+        <TabPanel value={tabValue} index={3}>
           <Grid container spacing={3}>
             {/* Filters Section */}
             <Grid item xs={12}>
@@ -1448,25 +2387,6 @@ const Treasury = () => {
                         />
                       )}
                     />
-                  </Grid>                  
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Stack direction="row" spacing={1}>
-                      <Button
-                        variant="contained"
-                        startIcon={<AddCircleIcon />}
-                        size="small"
-                        onClick={() => setShowTransferModal(true)}
-                      >
-                        Nouveau transfert
-                      </Button>
-                      <Button
-                        variant="outlined"
-                        startIcon={<DownloadIcon />}
-                        size="small"
-                      >
-                        Exporter
-                      </Button>
-                    </Stack>
                   </Grid>
                 </Grid>
               </Paper>
@@ -1500,9 +2420,9 @@ const Treasury = () => {
                         <Typography 
                           variant="h6" 
                           fontWeight="bold"
-                          color={selectedAccount.current_balance >= 0 ? 'success.main' : 'error.main'}
+                          color={parseBalance(selectedAccount.current_balance) >= 0 ? 'success.main' : 'error.main'}
                         >
-                          {formatCurrency(selectedAccount.current_balance)}
+                          {formatCurrency(parseBalance(selectedAccount.current_balance))}
                         </Typography>
                       </CardContent>
                     </Card>
@@ -1514,7 +2434,7 @@ const Treasury = () => {
                           Total débits
                         </Typography>
                         <Typography variant="h6" fontWeight="bold" color="error.main">
-                          {formatCurrency(accountMovements.reduce((sum, mov) => sum + mov.debit, 0))}
+                          {formatCurrency(accountMovements.reduce((sum, mov) => sum + parseBalance(mov.debit), 0))}
                         </Typography>
                       </CardContent>
                     </Card>
@@ -1526,7 +2446,7 @@ const Treasury = () => {
                           Total crédits
                         </Typography>
                         <Typography variant="h6" fontWeight="bold" color="success.main">
-                          {formatCurrency(accountMovements.reduce((sum, mov) => sum + mov.credit, 0))}
+                          {formatCurrency(accountMovements.reduce((sum, mov) => sum + parseBalance(mov.credit), 0))}
                         </Typography>
                       </CardContent>
                     </Card>
@@ -1542,333 +2462,13 @@ const Treasury = () => {
                   {error}
                 </Alert>
               )}
-              
-              <Paper sx={{ width: '100%' }} elevation={2}>
-                <Box sx={{ bgcolor: 'primary.light', px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="subtitle1" fontWeight="bold" color="primary.contrastText">
-                    <ReceiptIcon sx={{ fontSize: 20, mr: 1, verticalAlign: 'text-bottom' }} />
-                    Mouvements de compte
-                  </Typography>
-                  <Typography variant="body2" color="primary.contrastText">
-                    {accountMovements.length} mouvement(s)
-                  </Typography>
-                </Box>
-                
-                <Box sx={{ 
-                  height: Math.min(Math.max(400, accountMovements.length * 55 + 200), 800), 
-                  width: '100%' 
-                }}>
-                {loadingMovements ? (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                    <CircularProgress />
-                  </Box>
-                ) : accountMovements.length > 0 ? (
-                  <DataGrid
-                    rows={accountMovements.map(movement => ({
-                      id: movement.id,
-                      account_name: allAccounts.find(a => a.id === Number(movement.account))?.name || 'N/A',
-                      date: formatDate(movement.date),
-                      rawDate: movement.date,
-                      reference: movement.reference,
-                      transaction_type_display: movement.transaction_type_display,
-                      transaction_type: movement.transaction_type,
-                      description: movement.description,
-                      debit: movement.debit,
-                      credit: movement.credit,
-                      balance: movement.balance
-                    }))}
-                    columns={[
-                      { 
-                        field: 'date', 
-                        headerName: 'Date', 
-                        width: 120,
-                        sortComparator: (v1, v2, param1, param2) => {
-                          const d1 = new Date(param1.api.getCellValue(param1.id, 'rawDate'));
-                          const d2 = new Date(param2.api.getCellValue(param2.id, 'rawDate'));
-                          return d1.getTime() - d2.getTime();
-                        }
-                      },
-                      { 
-                        field: 'account_name', 
-                        headerName: 'Compte', 
-                        width: 150,
-                        renderCell: (params) => (
-                          <Chip 
-                            label={params.value}
-                            size="small"
-                            variant="outlined"
-                            sx={{ maxWidth: '100%' }}
-                          />
-                        )
-                      },
-                      { field: 'reference', headerName: 'Référence', width: 140 },
-                      { 
-                        field: 'transaction_type_display', 
-                        headerName: 'Type', 
-                        width: 180,
-                        renderCell: (params) => (
-                          <Chip 
-                            label={params.value}
-                            size="small"
-                            color={getTransactionTypeColor(params.row.transaction_type)}
-                            sx={{ fontWeight: 500 }}
-                          />
-                        )
-                      },
-                      { field: 'description', headerName: 'Description', flex: 1, minWidth: 200 },
-                      { 
-                        field: 'debit', 
-                        headerName: 'Débit', 
-                        width: 130, 
-                        align: 'right',
-                        headerAlign: 'right',
-                        renderCell: (params) => (
-                          params.value > 0 ? (
-                            <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 500 }}>
-                              {formatCurrency(params.value)}
-                            </Typography>
-                          ) : null
-                        )
-                      },
-                      { 
-                        field: 'credit', 
-                        headerName: 'Crédit', 
-                        width: 130,
-                        align: 'right',
-                        headerAlign: 'right',
-                        renderCell: (params) => (
-                          params.value > 0 ? (
-                            <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 500 }}>
-                              {formatCurrency(params.value)}
-                            </Typography>
-                          ) : null
-                        )
-                      },
-                      { 
-                        field: 'balance', 
-                        headerName: 'Solde', 
-                        width: 140,
-                        align: 'right',
-                        headerAlign: 'right',
-                        renderCell: (params) => (
-                          <Typography 
-                            variant="body2" 
-                            fontWeight="bold"
-                            sx={{ 
-                              color: params.value >= 0 ? 'success.main' : 'error.main',
-                              backgroundColor: params.value >= 0 ? 'rgba(46, 125, 50, 0.1)' : 'rgba(211, 47, 47, 0.1)',
-                              py: 0.5,
-                              px: 1,
-                              borderRadius: 1,
-                              fontSize: '0.8125rem'
-                            }}
-                          >
-                            {formatCurrency(params.value)}
-                          </Typography>
-                        )
-                      }
-                    ]}
-                    getRowClassName={(params) => 
-                      params.indexRelativeToCurrentPage % 2 === 0 ? '' : 'even-row'
-                    }
-                    initialState={{
-                      pagination: {
-                        paginationModel: { pageSize: 15, page: 0 },
-                      },
-                      sorting: {
-                        sortModel: [{ field: 'rawDate', sort: 'desc' }],
-                      },
-                    }}
-                    density="compact"
-                    disableRowSelectionOnClick
-                    slots={{
-                      toolbar: GridToolbar,
-                    }}
-                    slotProps={{
-                      toolbar: {
-                        showQuickFilter: true,
-                        quickFilterProps: { debounceMs: 300 },
-                      },
-                    }}
-                    sx={{
-                      border: 'none',
-                      '& .MuiDataGrid-cell:focus': {
-                        outline: 'none',
-                      },
-                      '& .even-row': {
-                        bgcolor: 'rgba(0, 0, 0, 0.02)',
-                      },
-                      '& .MuiDataGrid-columnHeaders': {
-                        backgroundColor: 'rgba(0, 0, 0, 0.03)',
-                        borderRadius: 0,
-                      }
-                    }}
-                    pageSizeOptions={[10, 15, 25, 50]}
-                  />
-                ) : (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                    <MoneyOffIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
-                    <Typography variant="h6" color="text.secondary" gutterBottom>
-                      Aucun mouvement trouvé
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" textAlign="center">
-                      {selectedAccount ? 
-                        `Aucun mouvement trouvé pour le compte ${selectedAccount.name} avec les filtres appliqués.` :
-                        'Sélectionnez un compte pour voir ses mouvements ou ajustez les filtres.'
-                      }
-                    </Typography>
-                  </Box>
-                )}
-                </Box>
-              </Paper>
+
+             <AccountMovementsTabs accountMovements={accountMovements} loadingMovements={loadingMovements} allAccounts={allAccounts} />
+
             </Grid>
           </Grid>
         </TabPanel>
       </StyledPaper>
-
-      {/* Account Transfer Dialog */}
-      <Dialog 
-        open={showTransferModal} 
-        onClose={() => setShowTransferModal(false)} 
-        maxWidth="sm" 
-        fullWidth
-        PaperProps={{
-          sx: { borderRadius: 2 }
-        }}
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <AccountBalanceIcon sx={{ mr: 1, color: 'primary.main' }} />
-            Nouveau transfert entre comptes
-          </Box>
-        </DialogTitle>
-        <Divider />
-        <DialogContent>
-          {error && (
-            <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
-              {error}
-            </Alert>
-          )}
-          <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            <Grid item xs={12}>
-              <Autocomplete
-                options={allAccounts}
-                getOptionLabel={(option) => `${option.name} (${option.account_type})`}
-                value={allAccounts.find(a => a.id === accountTransfer.from_account) || null}
-                isOptionEqualToValue={(option, value) => option.id === value.id}
-                onChange={(event, newValue) => {
-                  setAccountTransfer({...accountTransfer, from_account: newValue?.id});
-                }}
-                renderInput={(params) => (
-                  <TextField {...params}
-                    label="Compte source"
-                    variant="outlined"
-                    fullWidth
-                    required
-                  />
-                )}
-              />
-            </Grid>
-            <Grid item xs={12}>
-             <Autocomplete
-              options={accounts}
-              getOptionLabel={(option) => `${option.name} (${option.account_type})`}
-              value={selectedClient ? accounts.find(a => a.id === selectedClient.account) || null : accounts.find(a => a.id === newDeposit.account) || null}
-              isOptionEqualToValue={(option, value) => option.id === value.id}
-              onChange={(event, newValue) => {
-                setNewDeposit({...newDeposit, account: newValue ? newValue.id : null});
-                setDepositAccountTouched(true);
-                setDepositAccountError(null);
-              }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Compte du client"
-                  variant="outlined"
-                  fullWidth
-                  required
-                  error={depositAccountTouched && !newDeposit.account}
-                  helperText={depositAccountTouched && !newDeposit.account ? depositAccountError || "Veuillez sélectionner un compte pour le dépôt" : ""}
-                />
-              )}
-              disabled={!!selectedClient}
-            />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Montant"
-                type="text"
-                value={formatNumberDisplay(accountTransfer.amount)}
-                onChange={(e) => {
-                  const newValue = validateDecimalInput(e.target.value, accountTransfer.amount);
-                  setAccountTransfer({...accountTransfer, amount: newValue});
-                }}
-                fullWidth
-                required
-                error={accountTransfer.amount <= 0}
-                helperText={getValidationError(accountTransfer.amount, 'amount')}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <MoneyIcon />
-                    </InputAdornment>
-                  )
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Date du transfert"
-                type="date"
-                value={accountTransfer.transfer_date}
-                onChange={(e) => setAccountTransfer({...accountTransfer, transfer_date: e.target.value})}
-                fullWidth
-                required
-                InputLabelProps={{
-                  shrink: true,
-                }}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Numéro de référence"
-                value={accountTransfer.reference_number}
-                onChange={(e) => setAccountTransfer({...accountTransfer, reference_number: e.target.value})}
-                fullWidth
-                placeholder="Optionnel - sera généré automatiquement"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Notes"
-                value={accountTransfer.notes}
-                onChange={(e) => setAccountTransfer({...accountTransfer, notes: e.target.value})}
-                fullWidth
-                multiline
-                rows={2}
-                placeholder="Raison du transfert"
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <Divider />
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button 
-            onClick={() => setShowTransferModal(false)}
-            variant="outlined"
-          >
-            Annuler
-          </Button>
-          <Button 
-            variant="contained" 
-            onClick={handleCreateTransfer}
-            disabled={processingTransfer || !accountTransfer.from_account || !accountTransfer.to_account || !accountTransfer.amount}
-            startIcon={processingTransfer ? <CircularProgress size={20} /> : <AccountBalanceIcon />}
-          >
-            {processingTransfer ? 'Traitement...' : 'Créer le transfert'}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {/* Client Deposit Dialog */}
       <Dialog 
@@ -2381,6 +2981,214 @@ const Treasury = () => {
           </Button>
         </DialogActions>      
         </Dialog>
+
+      {/* Supplier Payment Dialog */}
+      <Dialog 
+        open={showSupplierPaymentModal} 
+        onClose={() => setShowSupplierPaymentModal(false)} 
+        maxWidth="sm" 
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: 2 }
+        }}
+      >
+        <DialogTitle sx={{ borderBottom: 1, borderColor: 'divider', pb: 2, display: 'flex', alignItems: 'center' }}>
+          <PaymentIcon sx={{ mr: 1, color: 'warning.main' }} />
+          <Typography variant="h6" component="div">
+            Paiement fournisseur
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          {selectedSupplyForPayment && (
+            <Box sx={{ py: 2 }}>
+              {selectedSupplyForPayment.payment_status === 'paid' ? (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  <AlertTitle>Approvisionnement déjà payé</AlertTitle>
+                  Cet approvisionnement a déjà été entièrement payé. Aucun paiement supplémentaire n'est nécessaire.
+                </Alert>
+              ) : null}
+              
+              {/* Supply information card */}
+              <Paper 
+                variant="outlined" 
+                sx={{ p: 2, mb: 3, borderRadius: 1, borderColor: 'divider', backgroundColor: 'background.paper' }}
+              >
+                <Typography variant="h6" color="warning.main" gutterBottom sx={{ mb: 2, fontWeight: 'medium', borderBottom: 1, pb: 1, borderColor: 'divider' }}>
+                  Informations de l'approvisionnement
+                </Typography>
+                
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="text.secondary">
+                      Référence
+                    </Typography>
+                    <Typography variant="subtitle1" fontWeight="medium">
+                      {selectedSupplyForPayment.reference}
+                    </Typography>
+                  </Grid>
+                  
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="text.secondary">
+                      Fournisseur
+                    </Typography>
+                    <Typography variant="subtitle1" fontWeight="medium">
+                      {selectedSupplier?.name || 'N/A'}
+                    </Typography>
+                  </Grid>
+                  
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Montant total
+                    </Typography>
+                    <Typography variant="subtitle1" fontWeight="medium">
+                      {formatCurrency(selectedSupplyForPayment.total_amount)}
+                    </Typography>
+                  </Grid>
+                  
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Montant payé
+                    </Typography>
+                    <Typography variant="subtitle1" fontWeight="medium" color="success.main">
+                      {formatCurrency(selectedSupplyForPayment.paid_amount)}
+                    </Typography>
+                  </Grid>
+                  
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Restant à payer
+                    </Typography>
+                    <Typography variant="subtitle1" fontWeight="bold" color="error.main">
+                      {formatCurrency(selectedSupplyForPayment.remaining_amount)}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Autocomplete
+                    options={allAccounts.filter(acc => acc.account_type !== 'client' && acc.account_type !== 'supplier')}
+                    getOptionLabel={(option) => `${option.name} - Solde: ${formatCurrency(parseBalance(option.current_balance))}`}
+                    value={selectedSupplierCompanyAccount}
+                    onChange={(event, newValue) => {
+                      setSelectedSupplierCompanyAccount(newValue);
+                    }}
+                    renderInput={(params) => (
+                      <TextField 
+                        {...params}
+                        label="Compte de l'entreprise" 
+                        variant="outlined"
+                        required
+                        helperText={
+                          selectedSupplierCompanyAccount && parseBalance(selectedSupplierCompanyAccount.current_balance) < supplierPaymentAmount
+                            ? `⚠️ Attention: Ce paiement créera un solde négatif (${formatCurrency(parseBalance(selectedSupplierCompanyAccount.current_balance) - supplierPaymentAmount)})`
+                            : "Sélectionnez le compte de l'entreprise pour effectuer le paiement"
+                        }
+                        InputLabelProps={{
+                          sx: selectedSupplierCompanyAccount && parseBalance(selectedSupplierCompanyAccount.current_balance) < supplierPaymentAmount 
+                            ? { color: 'warning.main' } 
+                            : undefined
+                        }}
+                      />
+                    )}
+                    renderOption={(props, option) => (
+                      <li {...props}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                          <Typography>{option.name}</Typography>
+                          <Chip 
+                            label={formatCurrency(parseBalance(option.current_balance))} 
+                            size="small"
+                            color={parseBalance(option.current_balance) >= supplierPaymentAmount ? 'success' : 'warning'}
+                            icon={parseBalance(option.current_balance) < supplierPaymentAmount ? <WarningIcon fontSize="small" /> : undefined}
+                            sx={{ fontWeight: 'bold' }}
+                          />
+                        </Box>
+                      </li>
+                    )}
+                  />
+                </Grid>
+
+                <Grid item xs={12}>
+                  <TextField
+                    label="Montant du paiement"
+                    type="text"
+                    fullWidth
+                    value={formatNumberDisplay(supplierPaymentAmount)}
+                    onChange={(e) => {
+                      const newValue = validateDecimalInput(e.target.value, supplierPaymentAmount);
+                      setSupplierPaymentAmount(newValue);
+                    }}
+                    error={
+                      supplierPaymentAmount <= 0 || 
+                      supplierPaymentAmount > selectedSupplyForPayment.remaining_amount
+                    }
+                    helperText={
+                      supplierPaymentAmount <= 0 
+                        ? 'Le montant doit être supérieur à zéro' 
+                        : supplierPaymentAmount > selectedSupplyForPayment.remaining_amount
+                        ? 'Le montant ne peut pas dépasser le solde restant'
+                        : selectedSupplierCompanyAccount && parseBalance(selectedSupplierCompanyAccount.current_balance) < supplierPaymentAmount
+                        ? `⚠️ Attention: Solde insuffisant (${formatCurrency(parseBalance(selectedSupplierCompanyAccount.current_balance))} disponible) - Le compte sera négatif`
+                        : `Solde restant: ${formatCurrency(selectedSupplyForPayment.remaining_amount)}`
+                    }
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <AttachMoneyIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Grid>
+
+                <Grid item xs={12}>
+                  <TextField
+                    label="Description"
+                    fullWidth
+                    multiline
+                    rows={2}
+                    value={supplierPaymentDescription}
+                    onChange={(e) => setSupplierPaymentDescription(e.target.value)}
+                    placeholder="Description du paiement"
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <Divider />
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button 
+            onClick={() => setShowSupplierPaymentModal(false)}
+            variant="outlined"
+            startIcon={<ArrowBackIcon />}
+          >
+            Annuler
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={handleSupplierPayment}
+            disabled={
+              processingSupplierPayment || 
+              !selectedSupplyForPayment || 
+              !selectedSupplierCompanyAccount ||
+              supplierPaymentAmount <= 0 ||
+              supplierPaymentAmount > (selectedSupplyForPayment?.remaining_amount || 0) ||
+              (selectedSupplyForPayment && selectedSupplyForPayment.payment_status === 'paid')
+            }
+            startIcon={processingSupplierPayment ? <CircularProgress size={20} /> : <PaymentIcon />}
+            sx={{ 
+              fontWeight: 'medium',
+              minWidth: '200px',
+              px: 3
+            }}
+          >
+            {processingSupplierPayment ? 'Traitement...' : 'Effectuer le paiement'}
+          </Button>
+        </DialogActions>      
+      </Dialog>
 
       {/* Success Snackbar */}
       <Snackbar
