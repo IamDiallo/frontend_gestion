@@ -95,7 +95,11 @@ export const mapStatementsForGrid = (statements: AccountStatement[]) => {
     description: statement.description,
     debit: statement.debit,
     credit: statement.credit,
-    balance: statement.balance
+    balance: statement.balance,
+    // Include original transaction_type for filtering/actions
+    transaction_type: statement.transaction_type,
+    // Include original statement for print functionality
+    _original: statement
   }));
 };
 
@@ -169,4 +173,36 @@ export const generateDepositReference = (): string => {
  */
 export const generateTransferReference = (): string => {
   return `TR-${Date.now()}`;
+};
+
+/**
+ * Validate client payment form data
+ */
+export const validateClientPaymentForm = (payment: any): { valid: boolean; error: string | null } => {
+  if (!payment.sale_id) {
+    return { valid: false, error: 'Veuillez sélectionner une vente' };
+  }
+  if (!payment.amount || payment.amount <= 0) {
+    return { valid: false, error: 'Le montant doit être supérieur à 0' };
+  }
+  if (!payment.account) {
+    return { valid: false, error: 'Veuillez sélectionner un compte' };
+  }
+  return { valid: true, error: null };
+};
+
+/**
+ * Validate supplier payment form data
+ */
+export const validateSupplierPaymentForm = (payment: any): { valid: boolean; error: string | null } => {
+  if (!payment.supply_id) {
+    return { valid: false, error: 'Veuillez sélectionner un approvisionnement' };
+  }
+  if (!payment.amount || payment.amount <= 0) {
+    return { valid: false, error: 'Le montant doit être supérieur à 0' };
+  }
+  if (!payment.account) {
+    return { valid: false, error: 'Veuillez sélectionner un compte' };
+  }
+  return { valid: true, error: null };
 };

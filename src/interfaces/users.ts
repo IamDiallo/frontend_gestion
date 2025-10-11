@@ -41,15 +41,16 @@ export interface UserFormData extends User {
 }
 
 export interface UserCreateRequest {
-  user: {
-    username: string;
-    email: string;
-    password: string;
-    is_active: boolean;
-  };
-  role: string;
-  zone: number;
+  username: string;
+  email: string;
+  password: string;
+  first_name?: string;
+  last_name?: string;
   is_active: boolean;
+  role: string;
+  zone?: number;
+  is_profile_active?: boolean;
+  groups?: number[];
 }
 
 export interface Group {

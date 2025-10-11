@@ -63,9 +63,12 @@ export type InventoryDialogStatus =
 export interface InventoryDialogItem {
   id?: number; // Optional ID for existing items (used during updates)
   product: number;
+  product_name?: string; // Display name for the product
+  product_obj?: unknown; // Optional product object reference
   quantity: number;
   unit_price: number;
   total_price: number;
+  expected_quantity?: number; // For inventory operations
 }
 
 // Form data structure that adapts based on operation type

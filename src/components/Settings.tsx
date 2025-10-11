@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Tab, Tabs, Button, Dialog, DialogActions, DialogContent,
   DialogContentText, DialogTitle, TextField, CircularProgress, Snackbar, Alert,
@@ -22,7 +23,21 @@ import {
 
 const Settings = () => {
   const theme = useTheme();
+  const [searchParams] = useSearchParams();
   const [tabValue, setTabValue] = useState(0);
+  
+  // Read tab from URL parameter on mount
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      const tabIndex = parseInt(tabParam, 10);
+      if (!isNaN(tabIndex) && tabIndex >= 0 && tabIndex < settingsCategories.length) {
+        setTabValue(tabIndex);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+  
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);

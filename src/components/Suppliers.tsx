@@ -33,6 +33,7 @@ import PermissionGuard from './PermissionGuard';
 import { usePermissionCheck } from '../hooks/usePermissionCheck';
 import { SuppliersAPI } from '../services/api';
 import { AccountsAPI } from '../services/api';
+import { useNavigate } from 'react-router-dom';
 
 const initialFormState: Omit<Supplier, 'id'> = {
   name: '',
@@ -46,6 +47,7 @@ const initialFormState: Omit<Supplier, 'id'> = {
 
 const Suppliers = () => {
   const { canPerform } = usePermissionCheck();
+  const navigate = useNavigate();
 
   const canEditSupplier = canPerform('change_supplier');
   const canDeleteSupplier = canPerform('delete_supplier');
@@ -250,6 +252,11 @@ const Suppliers = () => {
     setFormData(data);
   };
 
+  // Navigate to Settings to add account
+  const handleCreateAccount = () => {
+    navigate('/settings?tab=4'); // Tab 4 is the Accounts tab in Settings
+  };
+
   const handleSubmit = async () => {
     try {
       // Require account field
@@ -421,6 +428,7 @@ const Suppliers = () => {
           onSubmit={handleSubmit}
           onFormDataChange={handleFormDataChange}
           onAccountChange={handleAccountChange}
+          onCreateAccount={handleCreateAccount}
         />
 
         <Snackbar 

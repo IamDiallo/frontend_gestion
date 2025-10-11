@@ -6,9 +6,12 @@ import {
   DialogTitle,
   Typography,
   MenuItem,
-  Grid
+  Grid,
+  Button,
+  Box
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
+import { Settings as SettingsIcon } from '@mui/icons-material';
 import { StandardButton, StandardTextField, StandardSelect } from './index';
 import { t } from '../../utils/translations';
 
@@ -32,11 +35,13 @@ interface ContactDialogProps {
   availableAccounts: Array<{ id: number; name: string }>;
   loadingAccounts: boolean;
   priceGroups?: Array<{ id: number; name: string }>; // Only for clients
+  loadingPriceGroups?: boolean; // Loading state for price groups
   onClose: () => void;
   onSubmit: () => void;
   onFormDataChange: (data: ContactFormData) => void;
   onAccountChange: (value: number | '') => void;
   onPriceGroupChange?: (value: number) => void; // Only for clients
+  onCreateAccount?: () => void; // Handler to create new account
 }
 
 /**
@@ -50,11 +55,13 @@ const ContactDialog: React.FC<ContactDialogProps> = ({
   availableAccounts,
   loadingAccounts,
   priceGroups,
+  loadingPriceGroups,
   onClose,
   onSubmit,
   onFormDataChange,
   onAccountChange,
-  onPriceGroupChange
+  onPriceGroupChange,
+  onCreateAccount
 }) => {
   const theme = useTheme();
   const isClient = contactType === 'client';
@@ -80,8 +87,8 @@ const ContactDialog: React.FC<ContactDialogProps> = ({
   // Get account creation message
   const getAccountCreationMessage = () => {
     return isClient 
-      ? 'Aucun compte client disponible. Veuillez d\'abord créer un compte de type client dans la section Trésorerie.'
-      : 'Aucun compte fournisseur disponible. Veuillez d\'abord créer un compte de type fournisseur dans la section Trésorerie.';
+      ? 'Aucun compte client disponible. Veuillez d\'abord créer un compte de type client dans la section Paramètres.'
+      : 'Aucun compte fournisseur disponible. Veuillez d\'abord créer un compte de type fournisseur dans la section Paramètres.';
   };
 
   // Handle field changes
@@ -178,11 +185,17 @@ const ContactDialog: React.FC<ContactDialogProps> = ({
                 onChange={(e) => onPriceGroupChange(Number(e.target.value))}
                 fullWidth
               >
-                {priceGroups.map((priceGroup) => (
-                  <MenuItem key={priceGroup.id} value={priceGroup.id}>
-                    {priceGroup.name}
-                  </MenuItem>
-                ))}
+                {loadingPriceGroups ? (
+                  <MenuItem disabled>Chargement des groupes de prix...</MenuItem>
+                ) : priceGroups && Array.isArray(priceGroups) && priceGroups.length === 0 ? (
+                  <MenuItem disabled>Aucun groupe de prix disponible</MenuItem>
+                ) : (
+                  priceGroups && Array.isArray(priceGroups) && priceGroups.map((priceGroup) => (
+                    <MenuItem key={priceGroup.id} value={priceGroup.id}>
+                      {priceGroup.name}
+                    </MenuItem>
+                  ))
+                )}
               </StandardSelect>
             </Grid>
           )}
@@ -208,16 +221,49 @@ const ContactDialog: React.FC<ContactDialogProps> = ({
             </StandardSelect>
           </Grid>
           
-          {/* Account creation message */}
-          {availableAccounts && Array.isArray(availableAccounts) && availableAccounts.length === 0 && !loadingAccounts && (
+          {/* Account creation message with link */}
+          {availableAccounts && Array.isArray(availableAccounts) && availableAccounts.length === 0 && !loadingAccounts && onCreateAccount && (
             <Grid item xs={12}>
-              <Typography 
-                variant="caption" 
-                color="error" 
-                sx={{ mt: 1 }}
+              <Box 
+                sx={{ 
+                  mt: 1, 
+                  p: 2, 
+                  backgroundColor: theme.palette.warning.light + '20',
+                  borderRadius: 2,
+                  border: `1px solid ${theme.palette.warning.main}`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1
+                }}
               >
-                {getAccountCreationMessage()}
-              </Typography>
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary"
+                >
+                  {getAccountCreationMessage()}
+                </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<SettingsIcon />}
+                  onClick={() => {
+                    onClose();
+                    onCreateAccount();
+                  }}
+                  sx={{ 
+                    alignSelf: 'flex-start',
+                    textTransform: 'none',
+                    borderColor: theme.palette.warning.main,
+                    color: theme.palette.warning.main,
+                    '&:hover': {
+                      borderColor: theme.palette.warning.dark,
+                      backgroundColor: theme.palette.warning.light + '10'
+                    }
+                  }}
+                >
+                  Créer un compte dans Paramètres
+                </Button>
+              </Box>
             </Grid>
           )}
         </Grid>

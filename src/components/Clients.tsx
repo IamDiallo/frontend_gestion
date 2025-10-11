@@ -28,12 +28,13 @@ import {
   Email as EmailIcon,
   LocationOn as LocationIcon
 } from '@mui/icons-material';
-import { ClientsAPI, AccountsAPI } from '../services/api';
+import { ClientsAPI, AccountsAPI, PriceGroupsAPI } from '../services/api';
 import { Client, Account } from '../interfaces/business';
 import { PriceGroup } from '../interfaces/products';
 import { SnackbarState } from '../interfaces/common';
 import PermissionGuard from './PermissionGuard';
 import { usePermissionCheck } from '../hooks/usePermissionCheck';
+import { useNavigate } from 'react-router-dom';
 
 const Clients = () => {
   // Add permission checks
@@ -63,16 +64,16 @@ const Clients = () => {
     severity: 'success'
   });
   
-  // Define static price groups
-  const priceGroups: PriceGroup[] = [
-    { id: 1, name: 'Standard' },
-    { id: 2, name: 'Premium' },
-    { id: 3, name: 'VIP' }
-  ];
+  // Fetch price groups dynamically from backend
+  const [priceGroups, setPriceGroups] = useState<PriceGroup[]>([]);
+  const [loadingPriceGroups, setLoadingPriceGroups] = useState(false);
   
   // Replace static accounts with dynamic ones
   const [availableAccounts, setAvailableAccounts] = useState<Account[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
+  
+  // Navigation hook for redirecting to settings
+  const navigate = useNavigate();
 
   // Pagination state for DataGrid
   const [paginationModel, setPaginationModel] = useState({
@@ -111,6 +112,29 @@ const Clients = () => {
 
     fetchClients();
 
+  }, []);
+
+  // Fetch price groups from backend
+  useEffect(() => {
+    const fetchPriceGroups = async () => {
+      try {
+        setLoadingPriceGroups(true);
+        const data = await PriceGroupsAPI.getAll();
+        setPriceGroups(data);
+      } catch (err) {
+        console.error('Error loading price groups:', err);
+        setSnackbar({
+          open: true,
+          message: 'Erreur lors du chargement des groupes de prix',
+          severity: 'error'
+        });
+      } finally {
+        setLoadingPriceGroups(false);
+      }
+    };
+
+    fetchPriceGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Add effect to load available client accounts
@@ -186,6 +210,11 @@ const Clients = () => {
 
   const handlePriceGroupChange = (value: number) => {
     setFormData(prev => ({ ...prev, price_group: value }));
+  };
+
+  // Navigate to Settings to add account
+  const handleCreateAccount = () => {
+    navigate('/settings?tab=4'); // Tab 4 is the Accounts tab in Settings
   };
 
   // Handle form data changes for ContactDialog
@@ -536,12 +565,14 @@ const Clients = () => {
           formData={formData}
           availableAccounts={availableAccounts.map(a => ({ id: a.id, name: a.name }))}
           loadingAccounts={loadingAccounts}
-          priceGroups={priceGroups}
+          priceGroups={priceGroups.map(pg => ({ id: pg.id, name: pg.name }))}
+          loadingPriceGroups={loadingPriceGroups}
           onClose={handleCloseDialog}
           onSubmit={handleSubmit}
           onFormDataChange={handleFormDataChange}
           onAccountChange={handleAccountChange}
           onPriceGroupChange={handlePriceGroupChange}
+          onCreateAccount={handleCreateAccount}
         />
 
         {/* Snackbar pour les notifications */}

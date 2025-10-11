@@ -1,6 +1,6 @@
 import axios, { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { Client, OutstandingSupply, SupplierPaymentResponse } from '../interfaces/business';
-import { Product, ProductCategory, UnitOfMeasure } from '../interfaces/products';
+import { Product, ProductCategory, UnitOfMeasure, PriceGroup } from '../interfaces/products';
 import { Sale, Invoice, Quote, OutstandingSale, SaleDeletionResponse, SaleCanDeleteResponse } from '../interfaces/sales';
 import { User, Group, UserCreateRequest } from '../interfaces/users';
 import { 
@@ -2061,16 +2061,93 @@ export const DashboardAPI = {
 
   getClientAccountStatements: async (clientId?: number) => {
     try {
-      const endpoint = clientId 
-        ? `/account-statements/client_balance/?client_id=${clientId}`
-        : '/account-statements/client_balance/';
+      // If specific client requested, get their statements
+      if (clientId) {
+        const endpoint = `/account-statements/?client=${clientId}`;
+        debugAPI.logRequest(endpoint, 'GET');
+        const response = await api.get(endpoint);
+        debugAPI.logResponse(endpoint, response);
+        return {
+          statements: response.data?.results || response.data || []
+        };
+      }
       
-      debugAPI.logRequest(endpoint, 'GET');
-      const response = await api.get(endpoint);
-      debugAPI.logResponse(endpoint, response);
-      return response.data;
+      // Otherwise return empty (client balances are fetched separately)
+      return { statements: [] };
     } catch (error) {
-      debugAPI.logError('/account-statements/client_balance/', error);
+      debugAPI.logError('/account-statements/', error);
+      throw error;
+    }
+  },
+
+  getSupplierAccountStatements: async (supplierId?: number) => {
+    try {
+      // Fetch suppliers
+      const suppliersEndpoint = '/suppliers/';
+      debugAPI.logRequest(suppliersEndpoint, 'GET');
+      const suppliersResponse = await api.get(suppliersEndpoint);
+      
+      interface SupplierApiData {
+        id: number;
+        name: string;
+        contact_person?: string;
+        phone?: string;
+        email?: string;
+        account?: number;  // Just the account ID
+      }
+      
+      interface PaginatedResponse {
+        count: number;
+        results: SupplierApiData[];
+      }
+      
+      // Handle paginated response
+      const supplierData: SupplierApiData[] = (suppliersResponse.data as PaginatedResponse).results || [];
+      
+      // Fetch all accounts to get balances
+      const accountsEndpoint = '/accounts/?account_type=supplier';
+      debugAPI.logRequest(accountsEndpoint, 'GET');
+      const accountsResponse = await api.get(accountsEndpoint);
+      const accounts = accountsResponse.data?.results || accountsResponse.data || [];
+      
+      interface AccountData {
+        id: number;
+        current_balance: number;
+        last_transaction_date?: string;
+      }
+      
+      // Map suppliers with their account balances
+      const suppliers = supplierData.map((supplier) => {
+        const account = accounts.find((acc: AccountData) => acc.id === supplier.account);
+        return {
+          id: supplier.id,
+          name: supplier.name,
+          balance: account?.current_balance || 0,
+          account: supplier.account,
+          account_balance: account?.current_balance || 0,
+          last_transaction_date: account?.last_transaction_date,
+          contact: supplier.phone || supplier.contact_person || '-'
+        };
+      });
+      
+      let statements = [];
+      
+      if (supplierId) {
+        const supplier = suppliers.find((s) => s.id === supplierId);
+        if (supplier?.account) {
+          const statementsEndpoint = `/account-statements/?account=${supplier.account}`;
+          debugAPI.logRequest(statementsEndpoint, 'GET');
+          const statementsResponse = await api.get(statementsEndpoint);
+          statements = statementsResponse.data?.results || statementsResponse.data || [];
+        }
+      }
+      
+      return {
+        supplier_balances: suppliers,
+        supplier_transactions: statements
+      };
+    } catch (error) {
+      debugAPI.logError('/suppliers/ or /account-statements/', error);
       throw error;
     }
   }
@@ -2169,6 +2246,72 @@ export interface AccountStatement {
   credit: number;
   client_id: number;
 }
+
+// PriceGroups API
+export const PriceGroupsAPI = {
+  getAll: async (): Promise<PriceGroup[]> => {
+    try {
+      debugAPI.logRequest('/price-groups/', 'GET');
+      const response = await api.get('/price-groups/');
+      
+      const priceGroups = Array.isArray(response.data) ? response.data : 
+        (response.data && response.data.results ? response.data.results : []);
+      
+      debugAPI.logResponse('/price-groups/', { ...response, data: priceGroups });
+      return priceGroups;
+    } catch (error) {
+      debugAPI.logError('/price-groups/', error);
+      throw error;
+    }
+  },
+  
+  get: async (id: number): Promise<PriceGroup> => {
+    try {
+      debugAPI.logRequest(`/price-groups/${id}/`, 'GET');
+      const response = await api.get(`/price-groups/${id}/`);
+      debugAPI.logResponse(`/price-groups/${id}/`, response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError(`/price-groups/${id}/`, error);
+      throw error;
+    }
+  },
+  
+  create: async (data: Omit<PriceGroup, 'id'>): Promise<PriceGroup> => {
+    try {
+      debugAPI.logRequest('/price-groups/', 'POST', data);
+      const response = await api.post('/price-groups/', data);
+      debugAPI.logResponse('/price-groups/', response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError('/price-groups/', error);
+      throw error;
+    }
+  },
+  
+  update: async (id: number, data: Partial<PriceGroup>): Promise<PriceGroup> => {
+    try {
+      debugAPI.logRequest(`/price-groups/${id}/`, 'PUT', data);
+      const response = await api.put(`/price-groups/${id}/`, data);
+      debugAPI.logResponse(`/price-groups/${id}/`, response);
+      return response.data;
+    } catch (error) {
+      debugAPI.logError(`/price-groups/${id}/`, error);
+      throw error;
+    }
+  },
+  
+  delete: async (id: number): Promise<boolean> => {
+    try {
+      debugAPI.logRequest(`/price-groups/${id}/`, 'DELETE');
+      await api.delete(`/price-groups/${id}/`);
+      return true;
+    } catch (error) {
+      debugAPI.logError(`/price-groups/${id}/`, error);
+      throw error;
+    }
+  },
+};
 
 // Export the default api instance
 export default api;

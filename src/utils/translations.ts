@@ -115,6 +115,13 @@ export const STATUS_TRANSLATIONS = {
   in_stock: 'En stock',
   low_stock: 'Stock faible',
   out_of_stock: 'Rupture de stock',
+  normal: 'Normal',
+  faible: 'Faible',
+  rupture: 'Rupture',
+  
+  // Statuts d'inventaire
+  received: 'Reçu',
+  in_progress: 'En cours',
   
   // Statuts de commande/vente
   quote: 'Devis',

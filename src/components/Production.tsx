@@ -32,9 +32,10 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
-import { ProductionAPI, ProductsAPI } from '../services/api';
+import { ProductionAPI, ProductsAPI, ZonesAPI } from '../services/api';
 import { Production } from '../interfaces/production';
 import { Product } from '../interfaces/products';
+import { Zone } from '../interfaces/business';
 import PermissionGuard from './PermissionGuard';
 import { usePermissionCheck } from '../hooks/usePermissionCheck';
 import PermissionButton from './common/PermissionButton';
@@ -47,19 +48,13 @@ const initialProductionState = {
   notes: ''
 };
 
-const zones = [
-  { id: 1, name: 'Atelier Principal' },
-  { id: 2, name: 'Entrepôt Central' },
-  { id: 3, name: 'Magasin Paris' },
-  { id: 4, name: 'Magasin Lyon' }
-];
-
 const ProductionComponent = () => {
   const theme = useTheme();  const { canPerform } = usePermissionCheck();
   const canEditProduction = canPerform('change_production');
   const canDeleteProduction = canPerform('delete_production');
   const [productions, setProductions] = useState<Production[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [formData, setFormData] = useState(initialProductionState);
@@ -88,6 +83,10 @@ const ProductionComponent = () => {
       // Fetch products for the dropdown
       const productsData = await ProductsAPI.getAll();
       setProducts(productsData);
+      
+      // Fetch zones from backend
+      const zonesData = await ZonesAPI.getAll();
+      setZones(zonesData);
     } catch (err) {
       console.error('Error loading data:', err);
       setError('Erreur lors du chargement des données. Veuillez réessayer.');

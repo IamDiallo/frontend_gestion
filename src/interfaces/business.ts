@@ -80,7 +80,8 @@ export interface OutstandingSale {
   date: string;
   total_amount: number;
   paid_amount: number;
-  balance: number;
+  balance?: number; // Deprecated - use remaining_amount
+  remaining_amount: number;
   payment_status: string;
 }
 

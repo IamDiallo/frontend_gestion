@@ -253,6 +253,13 @@ export const getStatusChipStyles = (status: string): SxProps<Theme> => {
     'draft': { color: 'grey.600', bgcolor: 'grey.100' },
     'confirmed': { color: 'success.main', bgcolor: 'success.lighter' },
     'cancelled': { color: 'error.main', bgcolor: 'error.lighter' },
+    'default': { color: 'text.secondary', bgcolor: 'grey.100' },
+    // Couleurs de base pour StatusChip
+    'success': { color: 'success.main', bgcolor: 'success.lighter' },
+    'error': { color: 'error.main', bgcolor: 'error.lighter' },
+    'warning': { color: 'warning.main', bgcolor: 'warning.lighter' },
+    'info': { color: 'info.main', bgcolor: 'info.lighter' },
+    'primary': { color: 'primary.main', bgcolor: 'primary.lighter' },
     // Statuts de vente
     'quote': { color: 'info.main', bgcolor: 'info.lighter' },
     'order': { color: 'primary.main', bgcolor: 'primary.lighter' },
@@ -264,7 +271,14 @@ export const getStatusChipStyles = (status: string): SxProps<Theme> => {
     // Statuts de stock
     'in_stock': { color: 'success.main', bgcolor: 'success.lighter' },
     'low_stock': { color: 'warning.main', bgcolor: 'warning.lighter' },
-    'out_of_stock': { color: 'error.main', bgcolor: 'error.lighter' }
+    'out_of_stock': { color: 'error.main', bgcolor: 'error.lighter' },
+    'normal': { color: 'success.main', bgcolor: 'success.lighter' },
+    'faible': { color: 'warning.main', bgcolor: 'warning.lighter' },
+    'rupture': { color: 'error.main', bgcolor: 'error.lighter' },
+    // Statuts d'inventaire
+    'received': { color: 'success.main', bgcolor: 'success.lighter' },
+    'completed': { color: 'success.main', bgcolor: 'success.lighter' },
+    'in_progress': { color: 'info.main', bgcolor: 'info.lighter' }
   };
 
   const colors = statusColors[status.toLowerCase()] || 
