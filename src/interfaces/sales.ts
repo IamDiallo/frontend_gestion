@@ -45,6 +45,7 @@ export interface OutstandingSale {
   total_amount: number;
   paid_amount: number;
   balance: number;
+  remaining_amount: number;
   payment_status: string;
 }
 
@@ -98,7 +99,7 @@ export interface Quote {
   client_name?: string;
   date: string;
   expiry_date: string;
-  status: 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
+  status: 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired' | 'cancelled';
   is_converted?: boolean;
   subtotal: number;
   tax_amount: number;
@@ -112,23 +113,9 @@ export type ApiSaleItem = SaleItem;
 export type ApiInvoice = Invoice;
 export type ApiQuote = Quote;
 
-// Client interface
-export interface Client {
-  id: number;
-  name: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  company?: string;
-}
-
-// Zone interface
-export interface Zone {
-  id?: number;
-  name: string;
-  address: string;
-  description?: string;
-}
+// Re-export Client and Zone from domain interfaces for backward compatibility
+export type { Client } from './partners';
+export type { Zone } from './core';
 
 // Sale deletion interfaces
 export interface SaleDeletionSummary {

@@ -22,9 +22,7 @@ import {
   ReceiptLong,
   Pending as PendingIcon,
   ElectricBolt,
-  CheckCircle,
-  PlaylistAddCheck as PlaylistAddCheckIcon,
-  AttachMoney
+  PlaylistAddCheck as PlaylistAddCheckIcon
 } from '@mui/icons-material';
 
 const WorkflowConnector = styled(StepConnector)(({ theme }) => ({
@@ -270,130 +268,6 @@ const SalesWorkflow: React.FC<SalesWorkflowProps> = ({
             );
           })}
         </Stepper>      )}      {activeStep !== steps.length - 1 && status !== 'cancelled' && (<Box sx={{ display: 'flex', flexDirection: 'row', justifyContent: 'center', gap: 2, mt: 2 }}>
-          {/* Payment workflow visualization */}
-          {(status === 'payment_pending' || status === 'partially_paid') && (
-            <Paper 
-              elevation={0} 
-              sx={{ 
-                p: 2, 
-                mb: 3, 
-                mt: 2,
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 2,
-                bgcolor: 'background.default',
-                width: '100%',
-                maxWidth: 600
-              }}
-            >
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Progression du paiement
-              </Typography>
-              <Box sx={{ 
-                display: 'flex', 
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                mt: 2,
-                position: 'relative'
-              }}>
-                <Box sx={{ 
-                  position: 'absolute',
-                  top: '50%',
-                  left: '40px',
-                  right: '40px',
-                  height: 4,
-                  transform: 'translateY(-50%)',
-                  bgcolor: 'divider',
-                  zIndex: 0
-                }} />
-                
-                <Box sx={{ 
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  position: 'relative',
-                  zIndex: 1
-                }}>
-                  <Chip 
-                    label="En attente" 
-                    color={status === 'payment_pending' ? 'warning' : 'default'}
-                    variant={status === 'payment_pending' ? 'filled' : 'outlined'}
-                    size="small"
-                    sx={{ mb: 1 }}
-                  />                  <Box sx={{ 
-                    width: 40, 
-                    height: 40, 
-                    borderRadius: '50%', 
-                    bgcolor: status === 'payment_pending' ? 'warning.main' : 'background.paper',
-                    border: '2px solid',
-                    borderColor: status === 'payment_pending' ? 'warning.main' : 'divider',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center'
-                  }}>
-                    <AttachMoney fontSize="small" color={status === 'payment_pending' ? 'inherit' : 'disabled'} />
-                  </Box>
-                </Box>
-                  <Box sx={{ 
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  position: 'relative',
-                  zIndex: 1
-                }}>
-                  <Chip 
-                    label="Partiel" 
-                    color={status === 'partially_paid' ? 'warning' : 'default'}
-                    variant={status === 'partially_paid' ? 'filled' : 'outlined'}
-                    size="small"
-                    sx={{ mb: 1 }}
-                  />
-                  <Box sx={{ 
-                    width: 40, 
-                    height: 40, 
-                    borderRadius: '50%', 
-                    bgcolor: status === 'partially_paid' ? 'warning.main' : 'background.paper',
-                    border: '2px solid',
-                    borderColor: status === 'partially_paid' ? 'warning.main' : 'divider',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center'
-                  }}>
-                    <AttachMoney fontSize="small" color={status === 'partially_paid' ? 'inherit' : 'disabled'} />
-                  </Box>
-                </Box>
-                  <Box sx={{ 
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  position: 'relative',
-                  zIndex: 1
-                }}>
-                  <Chip 
-                    label="Payé" 
-                    color="default"
-                    variant="outlined"
-                    size="small"
-                    sx={{ mb: 1 }}
-                  />
-                  <Box sx={{ 
-                    width: 40, 
-                    height: 40, 
-                    borderRadius: '50%', 
-                    bgcolor: 'background.paper',
-                    border: '2px solid',
-                    borderColor: 'divider',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center'
-                  }}>
-                    <CheckCircle fontSize="small" color="disabled" />
-                  </Box>
-                </Box>
-              </Box>
-            </Paper>
-          )}
-
           {/* Available transitions */}
           {allowedTransitions.includes('confirmed') && status === 'pending' && (
             <Button
@@ -402,6 +276,7 @@ const SalesWorkflow: React.FC<SalesWorkflowProps> = ({
               onClick={() => handleNext('confirmed')}
               startIcon={<ShoppingCart />}
               disabled={isLoading}
+              size="small"
             >
               Confirmer la vente
             </Button>
@@ -413,6 +288,7 @@ const SalesWorkflow: React.FC<SalesWorkflowProps> = ({
               onClick={() => handleNext('payment_pending')}
               startIcon={<ReceiptLong />}
               disabled={isLoading}
+              size="small"
               sx={{ boxShadow: 2 }}
             >
               Paiement en attente
@@ -424,6 +300,7 @@ const SalesWorkflow: React.FC<SalesWorkflowProps> = ({
               onClick={() => handleNext('partially_paid')}
               startIcon={<Payments />}
               disabled={isLoading}
+              size="small"
               sx={{ boxShadow: 2 }}
             >
               Marquer comme payée partiellement
@@ -436,6 +313,7 @@ const SalesWorkflow: React.FC<SalesWorkflowProps> = ({
               onClick={() => handleNext('paid')}
               startIcon={<Check />}
               disabled={isLoading}
+              size="small"
               sx={{ boxShadow: 2 }}
             >
               Marquer comme payée
@@ -448,6 +326,7 @@ const SalesWorkflow: React.FC<SalesWorkflowProps> = ({
               onClick={() => handleNext('shipped')}
               startIcon={<LocalShipping />}
               disabled={isLoading}
+              size="small"
             >
               Marquer comme expédiée
             </Button>
@@ -459,6 +338,7 @@ const SalesWorkflow: React.FC<SalesWorkflowProps> = ({
               onClick={() => handleNext('delivered')}
               startIcon={<Check />}
               disabled={isLoading}
+              size="small"
             >
               Marquer comme livrée
             </Button>
@@ -470,6 +350,7 @@ const SalesWorkflow: React.FC<SalesWorkflowProps> = ({
               onClick={() => handleNext('completed')}
               startIcon={<Check />}
               disabled={isLoading}
+              size="small"
             >
               Compléter la vente
             </Button>
@@ -479,6 +360,7 @@ const SalesWorkflow: React.FC<SalesWorkflowProps> = ({
               <Button
                 variant="outlined"
                 color="secondary"
+                size="small"
                 // First complete the intermediate steps in sequence to avoid validation errors
                 onClick={() => {                  // Determine which steps need to be completed based on current status
                   if (['pending', 'confirmed', 'payment_pending', 'partially_paid'].includes(status)) {
@@ -519,6 +401,7 @@ const SalesWorkflow: React.FC<SalesWorkflowProps> = ({
               onClick={() => handleNext('cancelled')}
               startIcon={<Cancel />}
               disabled={isLoading}
+              size="small"
             >
               Annuler la vente
             </Button>
@@ -530,6 +413,7 @@ const SalesWorkflow: React.FC<SalesWorkflowProps> = ({
           <Button
             variant="outlined"
             color="primary"
+            size="small"
             startIcon={<ReceiptLong />}
             disabled={isLoading}
           >
@@ -538,6 +422,7 @@ const SalesWorkflow: React.FC<SalesWorkflowProps> = ({
           <Button
             variant="outlined"
             color="success"
+            size="small"
             startIcon={<PlaylistAddCheckIcon />}
             disabled={isLoading}
           >

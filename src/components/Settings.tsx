@@ -3,18 +3,26 @@ import { useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Tab, Tabs, Button, Dialog, DialogActions, DialogContent,
   DialogContentText, DialogTitle, TextField, CircularProgress, Snackbar, Alert,
-  Paper, List, ListItem, ListItemText, ListItemSecondaryAction, IconButton,
-  Divider, Card, CardHeader, CardContent, Fade, Backdrop, useTheme,
-  FormControlLabel, Checkbox, MenuItem, Select, InputLabel, FormControl
+  Paper, Divider, Card, CardHeader, CardContent, Fade, Backdrop, useTheme,
+  FormControlLabel, Checkbox, MenuItem, Select, InputLabel, FormControl,
+  Grid, Chip, InputAdornment, CardActions, Tooltip, Stack, IconButton, Pagination
 } from '@mui/material';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Search as SearchIcon,
+  Category as CategoryIcon,
+  AttachMoney as MoneyIcon,
+  AccountBalance as AccountIcon,
+  Straighten as MeasureIcon,
+  People as PeopleIcon,
+  LocationOn as LocationIcon,
+  Receipt as ReceiptIcon,
 } from '@mui/icons-material';
 import CheckIcon from '@mui/icons-material/Check';
 import PermissionGuard from './PermissionGuard';
-import { SettingsAPI } from '../services/api';
+import {SettingsAPI} from '../services/api/index';
 import { 
   validateDecimalInput, 
   formatNumberDisplay, 
@@ -25,6 +33,9 @@ const Settings = () => {
   const theme = useTheme();
   const [searchParams] = useSearchParams();
   const [tabValue, setTabValue] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 9;
   
   // Read tab from URL parameter on mount
   useEffect(() => {
@@ -42,7 +53,24 @@ const Settings = () => {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [currentItem, setCurrentItem] = useState(null);
-  const [currentSettingType, setCurrentSettingType] = useState('');  const [formData, setFormData] = useState({ 
+  const [currentSettingType, setCurrentSettingType] = useState('');
+  
+  // Icon mapping for categories
+  const getCategoryIcon = (endpoint: string) => {
+    const iconMap = {
+      'expense-categories': <ReceiptIcon />,
+      'units-of-measure': <MeasureIcon />,
+      'currencies': <MoneyIcon />,
+      'payment-methods': <AccountIcon />,
+      'accounts': <AccountIcon />,
+      'price-groups': <MoneyIcon />,
+      'product-categories': <CategoryIcon />,
+      'charge-types': <ReceiptIcon />,
+      'client-groups': <PeopleIcon />,
+      'zones': <LocationIcon />,
+    };
+    return iconMap[endpoint] || <CategoryIcon />;
+  };  const [formData, setFormData] = useState({ 
     name: '', 
     description: '',
     code: '',
@@ -71,16 +99,16 @@ const Settings = () => {
   const [currencies, setCurrencies] = useState([]);
   // Define the list of settings categories using useMemo to prevent re-creation on every render
   const settingsCategories = useMemo(() => [
-    { id: 'expense-categories', label: 'Catégories de dépenses', endpoint: 'expense-categories' },
+    { id: 'zones', label: 'Zones', endpoint: 'zones' },
+    { id: 'price-groups', label: 'Groupes de prix', endpoint: 'price-groups' },
+    { id: 'accounts', label: 'Comptes', endpoint: 'accounts' },
     { id: 'units', label: 'Unités de mesure', endpoint: 'units-of-measure' },
+    { id: 'expense-categories', label: 'Catégories de dépenses', endpoint: 'expense-categories' },
     { id: 'currencies', label: 'Devises', endpoint: 'currencies' },
     { id: 'payment-methods', label: 'Méthodes de paiement', endpoint: 'payment-methods' },
-    { id: 'accounts', label: 'Comptes', endpoint: 'accounts' },
-    { id: 'price-groups', label: 'Groupes de prix', endpoint: 'price-groups' },
     { id: 'product-categories', label: 'Catégories de produits', endpoint: 'product-categories' },
     { id: 'charge-types', label: 'Types de charges', endpoint: 'charge-types' },
     { id: 'client-groups', label: 'Groupes de clients', endpoint: 'client-groups' },
-    { id: 'zones', label: 'Zones', endpoint: 'zones' },
   ], []);
   // Function to get data based on current tab
   const fetchData = useCallback(async () => {
@@ -139,7 +167,44 @@ const Settings = () => {
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
     setCurrentSettingType(getSettingType());
+    setSearchQuery(''); // Reset search when changing tabs
+    setPage(1); // Reset to first page when changing tabs
   };
+  
+  // Filter data based on search query
+  const filteredData = useMemo(() => {
+    if (!searchQuery.trim()) return data;
+    
+    const query = searchQuery.toLowerCase();
+    return data.filter(item => 
+      item.name?.toLowerCase().includes(query) ||
+      item.description?.toLowerCase().includes(query) ||
+      item.code?.toLowerCase().includes(query) ||
+      item.symbol?.toLowerCase().includes(query)
+    );
+  }, [data, searchQuery]);
+  
+  // Paginate filtered data
+  const paginatedData = useMemo(() => {
+    const startIndex = (page - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredData.slice(startIndex, endIndex);
+  }, [filteredData, page, itemsPerPage]);
+  
+  // Calculate total pages
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  
+  // Handle page change
+  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+    setPage(value);
+    // Scroll to top of the card content
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery]);
   // Handle opening add dialog
   const handleAddClick = () => {
     // Reset form data with default values for all possible fields
@@ -533,11 +598,12 @@ const Settings = () => {
   return (
     <PermissionGuard requiredPermission="change_user" fallbackPath="/">
       <Box sx={{ backgroundColor: theme.palette.background.default, minHeight: '100vh', p: 3 }}>
-        <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold' }}>
+        <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold', color: theme.palette.text.primary }}>
           Paramètres du système
         </Typography>
 
-        <Paper elevation={2} sx={{ mb: 3, p: 1 }}>          <Tabs 
+        <Paper elevation={2} sx={{ mb: 3, p: 1 }}>          
+          <Tabs 
             value={tabValue}
             onChange={handleTabChange}
             indicatorColor="primary"
@@ -550,65 +616,256 @@ const Settings = () => {
           </Tabs>
         </Paper>
 
-        <Card elevation={3}>
+        <Card elevation={3} sx={{ mb: 3 }}>
           <CardHeader 
-            title={getSettingType()}
+            title={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {getCategoryIcon(getEndpoint())}
+                <Typography variant="h6" component="span">
+                  {getSettingType()}
+                </Typography>
+              </Box>
+            }
             action={
               <Button
                 variant="contained"
                 color="primary"
                 startIcon={<AddIcon />}
                 onClick={handleAddClick}
-                sx={{ borderRadius: '20px' }}
+                sx={{ borderRadius: '8px' }}
               >
                 Ajouter
               </Button>
             }
+            sx={{ pb: 2 }}
           />
-          <CardContent>
+          <Divider />
+          <CardContent sx={{ pt: 3 }}>
+            {/* Search Bar */}
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 3 }}>
+              <TextField
+                fullWidth
+                placeholder="Rechercher..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon color="action" />
+                    </InputAdornment>
+                  ),
+                }}
+                size="small"
+              />
+              {filteredData.length > 0 && (
+                <Chip 
+                  label={`${filteredData.length} élément${filteredData.length > 1 ? 's' : ''}`}
+                  color="primary"
+                  variant="outlined"
+                  sx={{ minWidth: 80 }}
+                />
+              )}
+            </Box>
+            
             {loadingData ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', p: 5 }}>
                 <CircularProgress />
               </Box>
-            ) : data.length === 0 ? (
-              <Typography color="textSecondary" align="center" sx={{ p: 3 }}>
-                Aucun élément trouvé
-              </Typography>
-            ) : (
-              <List>
-                {Array.isArray(data) ? data.map((item) => (
-                  <React.Fragment key={item.id}>
-                    <ListItem>
-                      <ListItemText 
-                        primary={item.name} 
-                        secondary={item.description || item.symbol || item.code} 
-                      />
-                      <ListItemSecondaryAction>
-                        <IconButton 
-                          edge="end" 
-                          aria-label="edit" 
-                          onClick={() => handleEditClick(item)}
-                          sx={{ mr: 1 }}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton 
-                          edge="end" 
-                          aria-label="delete" 
-                          onClick={() => handleDeleteClick(item)}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </ListItemSecondaryAction>
-                    </ListItem>
-                    <Divider />
-                  </React.Fragment>
-                )) : (
-                  <Typography color="error" align="center">
-                    Erreur de format des données
-                  </Typography>
+            ) : filteredData.length === 0 ? (
+              <Box sx={{ 
+                textAlign: 'center', 
+                py: 8,
+                px: 3,
+              }}>
+                {searchQuery ? (
+                  <>
+                    <SearchIcon sx={{ fontSize: 60, color: 'text.secondary', opacity: 0.3, mb: 2 }} />
+                    <Typography variant="h6" color="textSecondary" gutterBottom>
+                      Aucun résultat trouvé
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Essayez avec d'autres mots-clés
+                    </Typography>
+                  </>
+                ) : (
+                  <>
+                    {getCategoryIcon(getEndpoint()) && (
+                      <Box sx={{ 
+                        display: 'inline-flex', 
+                        p: 3, 
+                        borderRadius: '50%', 
+                        backgroundColor: theme.palette.action.hover,
+                        mb: 2 
+                      }}>
+                        {React.cloneElement(getCategoryIcon(getEndpoint()), { 
+                          sx: { fontSize: 48, color: 'text.secondary', opacity: 0.5 } 
+                        })}
+                      </Box>
+                    )}
+                    <Typography variant="h6" color="textSecondary" gutterBottom>
+                      Aucun élément trouvé
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+                      Commencez par ajouter votre premier élément
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      startIcon={<AddIcon />}
+                      onClick={handleAddClick}
+                      sx={{ borderRadius: '8px' }}
+                    >
+                      Ajouter {getSettingType()}
+                    </Button>
+                  </>
                 )}
-              </List>
+              </Box>
+            ) : (
+              <>
+                <Grid container spacing={2}>
+                  {paginatedData.map((item) => (
+                  <Grid item xs={12} sm={6} md={4} key={item.id}>
+                    <Card 
+                      elevation={1}
+                      sx={{ 
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        transition: 'all 0.2s',
+                        '&:hover': {
+                          elevation: 4,
+                          transform: 'translateY(-2px)',
+                          boxShadow: theme.palette.mode === 'dark' 
+                            ? '0 4px 20px rgba(0,0,0,0.4)' 
+                            : '0 4px 20px rgba(0,0,0,0.1)',
+                        }
+                      }}
+                    >
+                      <CardContent sx={{ flexGrow: 1, pb: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1 }}>
+                          <Typography variant="h6" component="div" sx={{ fontWeight: 600, fontSize: '1rem' }}>
+                            {item.name}
+                          </Typography>
+                          {item.is_active !== undefined && (
+                            <Chip 
+                              label={item.is_active ? 'Actif' : 'Inactif'}
+                              color={item.is_active ? 'success' : 'default'}
+                              size="small"
+                              sx={{ height: 20, fontSize: '0.7rem' }}
+                            />
+                          )}
+                          {item.is_base && (
+                            <Chip 
+                              label="Base"
+                              color="primary"
+                              size="small"
+                              sx={{ height: 20, fontSize: '0.7rem' }}
+                            />
+                          )}
+                        </Box>
+                        
+                        {item.description && (
+                          <Typography 
+                            variant="body2" 
+                            color="text.secondary" 
+                            sx={{ 
+                              mb: 1.5,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                            }}
+                          >
+                            {item.description}
+                          </Typography>
+                        )}
+                        
+                        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 0.5 }}>
+                          {item.code && (
+                            <Chip 
+                              label={`Code: ${item.code}`}
+                              size="small"
+                              variant="outlined"
+                              sx={{ height: 24 }}
+                            />
+                          )}
+                          {item.symbol && (
+                            <Chip 
+                              label={item.symbol}
+                              size="small"
+                              variant="outlined"
+                              sx={{ height: 24 }}
+                            />
+                          )}
+                          {item.discount_percentage !== undefined && item.discount_percentage > 0 && (
+                            <Chip 
+                              label={`-${item.discount_percentage}%`}
+                              size="small"
+                              color="secondary"
+                              sx={{ height: 24 }}
+                            />
+                          )}
+                        </Stack>
+                      </CardContent>
+                      
+                      <Divider />
+                      
+                      <CardActions sx={{ justifyContent: 'flex-end', px: 2, py: 1 }}>
+                        <Tooltip title="Modifier">
+                          <IconButton 
+                            size="small"
+                            color="primary"
+                            onClick={() => handleEditClick(item)}
+                            sx={{ 
+                              '&:hover': { 
+                                backgroundColor: theme.palette.primary.main + '15' 
+                              }
+                            }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Supprimer">
+                          <IconButton 
+                            size="small"
+                            color="error"
+                            onClick={() => handleDeleteClick(item)}
+                            sx={{ 
+                              '&:hover': { 
+                                backgroundColor: theme.palette.error.main + '15' 
+                              }
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+              
+              {/* Pagination - only show if more than 9 items */}
+              {filteredData.length > itemsPerPage && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+                  <Pagination 
+                    count={totalPages}
+                    page={page}
+                    onChange={handlePageChange}
+                    color="primary"
+                    size="large"
+                    showFirstButton
+                    showLastButton
+                    sx={{
+                      '& .MuiPaginationItem-root': {
+                        fontSize: '1rem',
+                      }
+                    }}
+                  />
+                </Box>
+              )}
+            </>
             )}
           </CardContent>
         </Card>

@@ -23,7 +23,7 @@ import {
   type TransferFormData,
   type InventoryFormData
 } from '../utils/inventoryUtils';
-import { InventoryAPI } from '../services/api';
+import * as InventoryAPI from '../services/api/inventory.api';
 
 interface UseInventoryDialogProps {
   products: Product[];

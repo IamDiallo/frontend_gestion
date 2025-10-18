@@ -20,7 +20,7 @@ import {
 } from 'recharts';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { CHART_COLORS, formatCurrency } from '../../utils/dashboardUtils';
-import type { ReportData } from '../../services/api';
+import type { ReportData } from '../../services/api/index';
 
 interface SalesTabProps {
   reportData: ReportData;

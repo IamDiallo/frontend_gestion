@@ -52,12 +52,18 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         return;
       }
 
-      // Get permissions from the API
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/users/user_permissions/`, {
+      // Get permissions from the API - Updated to new domain-driven endpoint
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/core/users/user_permissions/`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
-      });      const { permissions, is_admin, role, groups } = response.data;
+      });
+      const {
+        permissions = [],
+        is_admin = false,
+        role = null,
+        groups = [],
+      } = response.data;
       
       // Store in state
       setUserPermissions(permissions || []);
@@ -77,7 +83,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
         const token = localStorage.getItem('access_token');
         if (!token) throw new Error("No token available");
         
-        const userResponse = await axios.get(`${import.meta.env.VITE_API_URL}/users/me/`, {
+  const userResponse = await axios.get(`${import.meta.env.VITE_API_URL}/core/users/me/`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -180,6 +186,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
 };
 
 // Custom hook to use the permission context
+// eslint-disable-next-line react-refresh/only-export-components
 export const usePermissions = () => useContext(PermissionContext);
 
 export default PermissionProvider;

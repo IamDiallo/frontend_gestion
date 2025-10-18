@@ -28,11 +28,9 @@ import {
   UnitOfMeasure
 } from '../interfaces/products';
 import { 
-  ProductsAPI, 
-  ProductCategoriesAPI,
-  UnitsOfMeasureAPI,
-  fetchProductQRCode, // Make sure this is imported if used elsewhere
-} from '../services/api';
+  InventoryAPI,
+  SettingsAPI
+} from '../services/api/index';
 import { 
   validateDecimalInput, 
   validateIntegerInput,
@@ -109,16 +107,16 @@ const Products = () => {
         setLoading(true);
         setError(null);
         
-        const productsData = await ProductsAPI.getAll();
+        const productsData = await InventoryAPI.fetchProducts();
         setProducts(productsData);
         
         setLoadingCategories(true);
-        const categoriesData = await ProductCategoriesAPI.getAll();
+        const categoriesData = await SettingsAPI.fetchProductCategories();
         setCategories(categoriesData);
         setLoadingCategories(false);
         
         setLoadingUnits(true);
-        const unitsData = await UnitsOfMeasureAPI.getAll();
+        const unitsData = await SettingsAPI.fetchUnitsOfMeasure();
         setUnits(unitsData);
         setLoadingUnits(false);
       } catch (err) {
@@ -184,7 +182,7 @@ const Products = () => {
       // delete productToCreate.reference; // Keep this if backend generates reference
       
       console.log('Creating product:', productToCreate);
-      const createdProduct = await ProductsAPI.create(productToCreate);
+      const createdProduct = await InventoryAPI.createProduct(productToCreate);
       console.log('Product created:', createdProduct);
       
       // Display the new reference that was generated
@@ -274,7 +272,7 @@ const Products = () => {
       };
       
       console.log('Updating product:', productToUpdate);
-      const updatedProduct = await ProductsAPI.update(editingProduct.id, productToUpdate);
+      const updatedProduct = await InventoryAPI.updateProduct(editingProduct.id, productToUpdate);
       console.log('Product updated:', updatedProduct);
       
       setProducts(products.map(p => p.id === editingProduct.id ? updatedProduct : p));
@@ -334,7 +332,7 @@ const Products = () => {
       setDeleteLoading(true);
 
       console.log('Deleting product:', productToDelete);
-      await ProductsAPI.delete(productToDelete.id);
+      await InventoryAPI.deleteProduct(productToDelete.id);
       console.log('Product deleted');
       
       setProducts(products.filter(p => p.id !== productToDelete.id));
@@ -571,7 +569,7 @@ const Products = () => {
                           e.stopPropagation();
                           // Instead of directly opening a URL, use the fetchProductQRCode function
                           // and create a download link for the QR code
-                          fetchProductQRCode(params.row.id)
+                          InventoryAPI.fetchProductQRCode(params.row.id)
                             .then(blob => {
                               // Create a temporary URL for the blob
                               const url = URL.createObjectURL(blob);

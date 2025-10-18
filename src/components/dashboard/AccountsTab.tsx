@@ -7,7 +7,7 @@ import React, { useMemo } from 'react';
 import { Paper, Box, Typography, Chip } from '@mui/material';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { formatCurrency, parseBalance } from '../../utils/dashboardUtils';
-import type { ClientWithAccount } from '../../services/api';
+import type { ClientWithAccount } from '../../services/api/index';
 
 interface AccountsTabProps {
   clientBalances: ClientWithAccount[];

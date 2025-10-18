@@ -24,6 +24,10 @@ export {
 // Status
 export { default as StatusChip } from './StatusChip';
 
+// Sales Workflow
+export { default as SalesWorkflow } from './SalesWorkflow';
+export type { SalesStatus, SalesWorkflowProps } from './SalesWorkflow';
+
 // Dialogs
 export { default as ContactDialog } from './ContactDialog';
 export { default as InventoryDialog } from './InventoryDialog';

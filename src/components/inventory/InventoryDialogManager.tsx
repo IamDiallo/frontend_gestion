@@ -102,7 +102,7 @@ export const InventoryDialogManager: React.FC<InventoryDialogManagerProps> = ({
     const filterProducts = async () => {
       if (dialogOperation === 'transfer' && dialogFormData.sourceZone) {
         try {
-          const { InventoryAPI } = await import('../../services/api');
+          const { InventoryAPI } = await import('../../services/api/index');
           const stockData = await InventoryAPI.getStockByZone(Number(dialogFormData.sourceZone));
           const productsInZone = products.filter(p => 
             stockData.some(s => s.product === p.id && s.quantity > 0)

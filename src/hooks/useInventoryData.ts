@@ -4,12 +4,9 @@
  */
 
 import { useState, useCallback } from 'react';
-import {
-  InventoryAPI,
-  ZonesAPI,
-  ProductsAPI,
-  SuppliersAPI
-} from '../services/api';
+import * as InventoryAPI from '../services/api/inventory.api';
+import * as CoreAPI from '../services/api/core.api';
+import * as PartnersAPI from '../services/api/partners.api';
 import {
   Stock,
   StockSupply,
@@ -146,7 +143,7 @@ export const useInventoryData = (): UseInventoryDataReturn => {
 
   const fetchZones = useCallback(async () => {
     try {
-      const data = await ZonesAPI.getAll();
+      const data = await CoreAPI.fetchZones();
       setZones(data);
     } catch (err) {
       console.error('Error fetching zones:', err);
@@ -157,7 +154,7 @@ export const useInventoryData = (): UseInventoryDataReturn => {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const data = await ProductsAPI.getAll();
+      const data = await InventoryAPI.fetchProducts();
       setProducts(data);
     } catch (err) {
       console.error('Error fetching products:', err);
@@ -168,7 +165,7 @@ export const useInventoryData = (): UseInventoryDataReturn => {
 
   const fetchSuppliers = useCallback(async () => {
     try {
-      const data = await SuppliersAPI.getAll();
+      const data = await PartnersAPI.fetchSuppliers();
       setSuppliers(data);
     } catch (err) {
       console.error('Error fetching suppliers:', err);

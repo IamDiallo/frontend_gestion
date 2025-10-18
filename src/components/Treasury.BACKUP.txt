@@ -24,7 +24,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import WarningIcon from '@mui/icons-material/Warning';
 
 import { useSnackbar } from 'notistack';
-import { ClientsAPI,SuppliersAPI, SettingsAPI, TreasuryAPI, SalesAPI, AccountsAPI, InventoryAPI } from '../services/api';
+import { ClientsAPI,SuppliersAPI, SettingsAPI, TreasuryAPI, SalesAPI, AccountsAPI, InventoryAPI } from '../services/api/index';
 import { Client, Account, ClientDeposit, TabPanelProps, OutstandingSale, OutstandingSupply, AccountStatement, ActualClientBalanceResponse,ActualSupplierBalanceResponse, Supplier } from '../interfaces/business';
 import PermissionGuard from './PermissionGuard';
 import { 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, CircularProgress, Typography, Button } from '@mui/material';
-import { fetchProductQRCode } from '../../services/api';
+import { InventoryAPI } from '../../services/api/index';
 
 interface ProductQRCodeProps {
   productId: number;
@@ -28,7 +28,7 @@ const ProductQRCode: React.FC<ProductQRCodeProps> = ({
         setError(null);
         
         // Fetch the QR code blob using the authenticated API
-        const qrBlob = await fetchProductQRCode(productId);
+        const qrBlob = await InventoryAPI.fetchProductQRCode(productId);
         
         // Create an object URL from the blob
         const objectUrl = URL.createObjectURL(qrBlob);

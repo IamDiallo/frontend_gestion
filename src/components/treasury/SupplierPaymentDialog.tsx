@@ -30,7 +30,7 @@ import {
 } from '@mui/icons-material';
 import { SupplierPaymentDialogState } from '../../hooks/useTreasuryDialogs';
 import { Account } from '../../interfaces/business';
-import { AccountsAPI } from '../../services/api';
+import { AccountsAPI } from '../../services/api/index';
 
 interface SupplierPaymentDialogProps {
   data: SupplierPaymentDialogState;

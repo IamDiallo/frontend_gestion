@@ -17,7 +17,7 @@ import {
 } from 'recharts';
 import { DataGrid, type GridColDef } from '@mui/x-data-grid';
 import { CHART_COLORS, formatCurrency } from '../../utils/dashboardUtils';
-import type { ReportData, LowStockProduct } from '../../services/api';
+import type { ReportData, LowStockProduct } from '../../services/api/index';
 
 interface ProductsTabProps {
   reportData: ReportData;

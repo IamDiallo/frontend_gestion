@@ -7,7 +7,7 @@ import React from 'react';
 import { Grid } from '@mui/material';
 import StatsCard from '../common/StatsCard';
 import { Assessment, People, Inventory2, LocalShipping } from '@mui/icons-material';
-import type { DashboardStats } from '../../services/api';
+import type { DashboardStats } from '../../services/api/index';
 
 interface StatsCardsProps {
   stats: DashboardStats | null;

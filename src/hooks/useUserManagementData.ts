@@ -4,12 +4,28 @@
  */
 
 import { useState, useCallback } from 'react';
-import { UserAPI, GroupAPI, PermissionAPI, ZonesAPI } from '../services/api';
-import { User, Group, UserCreateRequest, PermissionCategory as PermissionCategoryType } from '../interfaces/users';
-import { Zone } from '../interfaces/sales';
+import * as CoreAPI from '../services/api/core.api';
+import { Zone } from '../interfaces/core';
+import { User, Group, UserCreateRequest } from '../interfaces/users';
 
-// Re-export types for convenience
-export type { PermissionCategoryType };
+// Extended Permission type with additional fields needed for UI
+export interface ExtendedPermission {
+  id: number;
+  name: string;
+  codename: string;
+  content_type: {
+    app_label: string;
+  };
+  full_codename: string;
+}
+
+// Categorized permissions structure
+export interface PermissionCategoryType {
+  name: string;
+  app: string;
+  model: string;
+  permissions: ExtendedPermission[];
+}
 
 export interface UserUpdateData {
   username: string;
@@ -86,37 +102,52 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await UserAPI.getUsers();
+      const response = await CoreAPI.fetchUsers();
       
       // Handle both paginated response with results and direct array response
-      const userData = Array.isArray(response) ? response : (response as { results?: User[] }).results || response;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const userData = Array.isArray(response) ? response : (response as { results?: any[] }).results || response;
       
-      // Transform the data to match our component's expected format
-      const transformedUsers = (userData as User[]).map((user: User) => ({
-        ...user,
+      // Transform Core User types to users.ts User types
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const transformedUsers: User[] = (userData as any[]).map((coreUser: any) => {
         // Extract role and zone from profile_data if available
-        role: user.profile_data?.role || user.profile?.role || '',
-        zone: user.profile_data?.zone !== undefined ? user.profile_data.zone : user.profile?.zone,
-        is_active: user.is_active,
-        // Ensure groups is always an array
-        groups: Array.isArray(user.groups) ? 
-          user.groups.map(g => {
-            // If groups are already objects with required Group properties, return them as is
-            if (typeof g === 'object' && g !== null && 'id' in g && 'name' in g && 'permissions' in g) return g;
-            // If groups are simple objects with id/name, convert them to full Group objects
-            if (typeof g === 'object' && g !== null && 'id' in g && 'name' in g) {
-              return { ...g, permissions: [] } as Group;
-            }
-            // If groups are just IDs (numbers), convert them to full Group objects
-            const groupId = typeof g === 'number' ? g : Number(g);
-            return { 
-              id: groupId, 
-              name: getGroupName(groupId),
-              permissions: []
-            } as Group;
-          }) : 
-          []
-      }));
+        const role = coreUser.profile_data?.role || '';
+        const zone = null; // Will be handled by profile_data
+        
+        // Convert groups: Core API returns Group[] with Permission[], we need number[]
+        let groupIds: number[] = [];
+        if (Array.isArray(coreUser.groups)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          groupIds = coreUser.groups.map((g: any) => {
+            if (typeof g === 'number') return g;
+            return g.id || 0;
+          });
+        }
+        
+        // Create user object matching users.ts interface
+        const user: User = {
+          id: coreUser.id,
+          username: coreUser.username,
+          email: coreUser.email,
+          first_name: coreUser.first_name || '',
+          last_name: coreUser.last_name || '',
+          is_active: coreUser.is_active,
+          is_staff: coreUser.is_staff,
+          date_joined: coreUser.date_joined,
+          profile_data: coreUser.profile_data ? {
+            role: coreUser.profile_data.role,
+            is_active: coreUser.is_active,
+            zone: null // UserProfile from core doesn't have zone
+          } : undefined,
+          groups: groupIds,
+          role: role,
+          zone: zone,
+          permissions: coreUser.permissions || []
+        };
+        
+        return user;
+      });
       
       setUsers(transformedUsers);
       setError(null);
@@ -127,11 +158,43 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
     } finally {
       setLoading(false);
     }
-  }, [getGroupName]);
+  }, []);
 
   const fetchUserById = useCallback(async (userId: number): Promise<User | null> => {
     try {
-      const user = await UserAPI.getUser(userId);
+      const coreUser = await CoreAPI.fetchUser(userId);
+      
+      // Transform Core User to users.ts User
+      const role = coreUser.profile_data?.role || '';
+      let groupIds: number[] = [];
+      if (Array.isArray(coreUser.groups)) {
+        groupIds = coreUser.groups.map((g) => {
+          if (typeof g === 'number') return g;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          return (g as any).id || 0;
+        });
+      }
+      
+      const user: User = {
+        id: coreUser.id,
+        username: coreUser.username,
+        email: coreUser.email,
+        first_name: coreUser.first_name || '',
+        last_name: coreUser.last_name || '',
+        is_active: coreUser.is_active,
+        is_staff: coreUser.is_staff,
+        date_joined: coreUser.date_joined,
+        profile_data: coreUser.profile_data ? {
+          role: coreUser.profile_data.role,
+          is_active: coreUser.is_active,
+          zone: null
+        } : undefined,
+        groups: groupIds,
+        role: role,
+        zone: null,
+        permissions: coreUser.permissions || []
+      };
+      
       return user;
     } catch (err) {
       console.error(`Error fetching user ${userId}:`, err);
@@ -142,8 +205,18 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
   const fetchGroups = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await GroupAPI.getGroups();
-      setGroups(data);
+      const coreGroups = await CoreAPI.fetchGroups();
+      
+      // Transform Core Groups to users.ts Groups
+      const transformedGroups: Group[] = coreGroups.map((coreGroup) => ({
+        id: coreGroup.id,
+        name: coreGroup.name,
+        permissions: coreGroup.permissions.map(p => p.id), // Extract permission IDs
+        description: undefined,
+        is_active: true
+      }));
+      
+      setGroups(transformedGroups);
       setError(null);
     } catch (err) {
       console.error('Error loading groups:', err);
@@ -156,7 +229,7 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
 
   const fetchZones = useCallback(async () => {
     try {
-      const zonesData = await ZonesAPI.getAll();
+  const zonesData = await CoreAPI.fetchZones();
       // Ensure zones have required id and name properties
       const transformedZones = zonesData.map(zone => ({
         ...zone,
@@ -175,7 +248,7 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
       setAvailablePermissions([]); // Reset permissions before fetching
       
       // Get permissions in a categorized format from backend
-      const response = await PermissionAPI.getCategorizedPermissions();
+      const response = await CoreAPI.fetchCategorizedPermissions();
       
       console.log('Raw permissions response from API:', response);
       
@@ -191,7 +264,8 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
         
         Object.entries(response).forEach(([appLabel, models]) => {
           if (models && typeof models === 'object') {
-            Object.entries(models as Record<string, unknown[]>).forEach(([modelName, permissions]) => {
+            // Cast to unknown first to bypass type checking, then to our expected type
+            Object.entries(models as unknown as Record<string, unknown[]>).forEach(([modelName, permissions]) => {
               if (Array.isArray(permissions) && permissions.length > 0) {
                 transformed.push({
                   name: `${appLabel} - ${modelName}`,
@@ -221,10 +295,10 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
         permissionsArray = response;
       } else if (response && 'results' in response) {
         // Handle paginated response
-        permissionsArray = (response as { results: PermissionCategoryType[] }).results;
+        permissionsArray = (response as unknown as { results: PermissionCategoryType[] }).results;
       } else if (response && 'data' in response) {
         // Handle wrapped response
-        permissionsArray = (response as { data: PermissionCategoryType[] }).data;
+        permissionsArray = (response as unknown as { data: PermissionCategoryType[] }).data;
       }
       
       console.log('Transformed permissions array:', permissionsArray);
@@ -310,19 +384,41 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
 
   const createUser = useCallback(async (userData: UserCreateRequest): Promise<User> => {
     try {
-      const newUser = await UserAPI.createUser(userData);
+      const newCoreUser = await CoreAPI.createUser(userData);
       
-      // Transform the new user to match our component structure
-      const transformedNewUser = {
-        ...newUser,
-        role: newUser.profile_data?.role || newUser.profile?.role || '',
-        zone: newUser.profile_data?.zone !== undefined ? newUser.profile_data.zone : newUser.profile?.zone,
-        is_active: newUser.is_active
+      // Transform the new user
+      const role = newCoreUser.profile_data?.role || '';
+      let groupIds: number[] = [];
+      if (Array.isArray(newCoreUser.groups)) {
+        groupIds = newCoreUser.groups.map((g) => {
+          if (typeof g === 'number') return g;
+          return ((g as Record<string, unknown>).id as number) || 0;
+        });
+      }
+      
+      const transformedUser: User = {
+        id: newCoreUser.id,
+        username: newCoreUser.username,
+        email: newCoreUser.email,
+        first_name: newCoreUser.first_name || '',
+        last_name: newCoreUser.last_name || '',
+        is_active: newCoreUser.is_active,
+        is_staff: newCoreUser.is_staff,
+        date_joined: newCoreUser.date_joined,
+        profile_data: newCoreUser.profile_data ? {
+          role: newCoreUser.profile_data.role,
+          is_active: newCoreUser.is_active,
+          zone: null
+        } : undefined,
+        groups: groupIds,
+        role: role,
+        zone: null,
+        permissions: newCoreUser.permissions || []
       };
       
-      setUsers(prev => [...prev, transformedNewUser]);
+      setUsers(prev => [...prev, transformedUser]);
       setError(null);
-      return transformedNewUser;
+      return transformedUser;
     } catch (err) {
       console.error('Error creating user:', err);
       throw err;
@@ -331,18 +427,39 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
 
   const updateUser = useCallback(async (id: number, userData: UserUpdateData): Promise<User> => {
     try {
-      const updatedUser = await UserAPI.updateUser(id, userData);
+      const updatedCoreUser = await CoreAPI.updateUser(id, userData);
       
       // Reload user list to get fresh data
       await fetchUsers();
       
-      // Transform the updated user to match our component structure
-      const transformedUser = {
-        ...updatedUser,
-        role: updatedUser.profile_data?.role || '',
-        zone: updatedUser.profile_data?.zone !== undefined ? 
-              updatedUser.profile_data.zone : null,
-        is_active: Boolean(updatedUser.is_active)
+      // Transform the updated user
+      const role = updatedCoreUser.profile_data?.role || '';
+      let groupIds: number[] = [];
+      if (Array.isArray(updatedCoreUser.groups)) {
+        groupIds = updatedCoreUser.groups.map((g) => {
+          if (typeof g === 'number') return g;
+          return ((g as Record<string, unknown>).id as number) || 0;
+        });
+      }
+      
+      const transformedUser: User = {
+        id: updatedCoreUser.id,
+        username: updatedCoreUser.username,
+        email: updatedCoreUser.email,
+        first_name: updatedCoreUser.first_name || '',
+        last_name: updatedCoreUser.last_name || '',
+        is_active: updatedCoreUser.is_active,
+        is_staff: updatedCoreUser.is_staff,
+        date_joined: updatedCoreUser.date_joined,
+        profile_data: updatedCoreUser.profile_data ? {
+          role: updatedCoreUser.profile_data.role,
+          is_active: updatedCoreUser.is_active,
+          zone: null
+        } : undefined,
+        groups: groupIds,
+        role: role,
+        zone: null,
+        permissions: updatedCoreUser.permissions || []
       };
       
       setUsers(prev => prev.map(u => u.id === id ? transformedUser : u));
@@ -356,7 +473,7 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
 
   const deleteUser = useCallback(async (id: number): Promise<void> => {
     try {
-      await UserAPI.deleteUser(id);
+  await CoreAPI.deleteUser(id);
       setUsers(prev => prev.filter(u => u.id !== id));
       setError(null);
     } catch (err) {
@@ -372,10 +489,20 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
 
   const createGroup = useCallback(async (groupData: { name: string; permissions: number[] }): Promise<Group> => {
     try {
-      const newGroup = await GroupAPI.createGroup(groupData);
-      setGroups(prev => [...prev, newGroup]);
+      const newCoreGroup = await CoreAPI.createGroup(groupData);
+      
+      // Transform Core Group to users.ts Group
+      const transformedGroup: Group = {
+        id: newCoreGroup.id,
+        name: newCoreGroup.name,
+        permissions: newCoreGroup.permissions.map(p => p.id),
+        description: undefined,
+        is_active: true
+      };
+      
+      setGroups(prev => [...prev, transformedGroup]);
       setError(null);
-      return newGroup;
+      return transformedGroup;
     } catch (err) {
       console.error('Error creating group:', err);
       throw err;
@@ -384,10 +511,22 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
 
   const updateGroup = useCallback(async (id: number, groupData: { name: string; permissions: number[] }): Promise<Group> => {
     try {
-      const updatedGroup = await GroupAPI.updateGroup(id, groupData);
-      setGroups(prev => prev.map(g => g.id === id ? updatedGroup : g));
+      // Send the group data as-is to API (it expects number[] for permissions)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const updatedCoreGroup = await CoreAPI.updateGroup(id, groupData as any);
+      
+      // Transform Core Group to users.ts Group
+      const transformedGroup: Group = {
+        id: updatedCoreGroup.id,
+        name: updatedCoreGroup.name,
+        permissions: updatedCoreGroup.permissions.map(p => p.id),
+        description: undefined,
+        is_active: true
+      };
+      
+      setGroups(prev => prev.map(g => g.id === id ? transformedGroup : g));
       setError(null);
-      return updatedGroup;
+      return transformedGroup;
     } catch (err) {
       console.error('Error updating group:', err);
       throw err;
@@ -396,7 +535,7 @@ export const useUserManagementData = (): UseUserManagementDataReturn => {
 
   const deleteGroup = useCallback(async (id: number): Promise<void> => {
     try {
-      await GroupAPI.deleteGroup(id);
+  await CoreAPI.deleteGroup(id);
       setGroups(prev => prev.filter(g => g.id !== id));
       setError(null);
     } catch (err) {

@@ -1,6 +1,9 @@
 // Dashboard-specific interfaces for API responses and component props
-import { SalesData } from '../services/api';
-import { Account } from './business';
+
+export interface SalesData {
+  month: string;
+  amount: number;
+}
 
 export interface ApiResponse<T> {
   results?: T[];

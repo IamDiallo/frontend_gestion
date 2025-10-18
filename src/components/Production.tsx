@@ -4,19 +4,13 @@ import {
   Typography,
   Paper,
   Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   TextField,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  DialogContentText,
   IconButton,
-  Snackbar,
   Alert,
   CircularProgress,
   MenuItem,
@@ -25,20 +19,28 @@ import {
   InputLabel,
   Grid,
   SelectChangeEvent,
+  InputAdornment,
 } from '@mui/material';
+import { GridRenderCellParams } from '@mui/x-data-grid';
 import { useTheme } from '@mui/material/styles';
 import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
-import { ProductionAPI, ProductsAPI, ZonesAPI } from '../services/api';
+import { ProductionAPI, InventoryAPI, CoreAPI } from '../services/api/index';
 import { Production } from '../interfaces/production';
 import { Product } from '../interfaces/products';
 import { Zone } from '../interfaces/business';
 import PermissionGuard from './PermissionGuard';
 import { usePermissionCheck } from '../hooks/usePermissionCheck';
 import PermissionButton from './common/PermissionButton';
+import StandardDataGrid from './common/StandardDataGrid';
+import { 
+  getStandardPrimaryButtonStyles,
+  getStandardSecondaryButtonStyles 
+} from '../utils/styleUtils';
 
 const initialProductionState = {
   product: 0,
@@ -49,23 +51,41 @@ const initialProductionState = {
 };
 
 const ProductionComponent = () => {
-  const theme = useTheme();  const { canPerform } = usePermissionCheck();
+  const theme = useTheme();
+  const { canPerform } = usePermissionCheck();
   const canEditProduction = canPerform('change_production');
   const canDeleteProduction = canPerform('delete_production');
+  
   const [productions, setProductions] = useState<Production[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [zoneFilter, setZoneFilter] = useState('');
+  const [productFilter, setProductFilter] = useState('');
+  
   const [openDialog, setOpenDialog] = useState(false);
   const [formData, setFormData] = useState(initialProductionState);
   const [editMode, setEditMode] = useState(false);
   const [currentId, setCurrentId] = useState<number | null>(null);
-  const [snackbar, setSnackbar] = useState({
-    open: false,
-    message: '',
-    severity: 'success' as 'success' | 'error'
-  });
+  
+  // Delete confirmation dialog state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [productionToDelete, setProductionToDelete] = useState<Production | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  
   const [error, setError] = useState<string | null>(null);
+
+  // Add pagination state
+  const [paginationModel, setPaginationModel] = useState({
+    page: 0,
+    pageSize: 10,
+  });
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setPaginationModel(prev => ({ ...prev, page: 0 }));
+  }, [searchTerm, zoneFilter, productFilter]);
 
   useEffect(() => {
     fetchData();
@@ -77,15 +97,15 @@ const ProductionComponent = () => {
       setError(null);
       
       // Fetch productions
-      const productionsData = await ProductionAPI.getAll();
+      const productionsData = await ProductionAPI.fetchProductions();
       setProductions(productionsData);
       
       // Fetch products for the dropdown
-      const productsData = await ProductsAPI.getAll();
+      const productsData = await InventoryAPI.fetchProducts();
       setProducts(productsData);
       
       // Fetch zones from backend
-      const zonesData = await ZonesAPI.getAll();
+      const zonesData = await CoreAPI.fetchZones();
       setZones(zonesData);
     } catch (err) {
       console.error('Error loading data:', err);
@@ -94,6 +114,29 @@ const ProductionComponent = () => {
       setLoading(false);
     }
   };
+
+  const getProductName = (productId: number) => {
+    const product = products.find(p => p.id === productId);
+    return product ? product.name : 'Produit inconnu';
+  };
+
+  const getZoneName = (zoneId: number) => {
+    const zone = zones.find(z => z.id === zoneId);
+    return zone ? zone.name : 'Zone inconnue';
+  };
+
+  // Filter productions based on search and filters
+  const filteredProductions = productions.filter((production) => {
+    const productName = getProductName(production.product).toLowerCase();
+    const matchesSearch = productName.includes(searchTerm.toLowerCase()) ||
+      (production.notes && production.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesZone = zoneFilter === '' || production.zone === Number(zoneFilter);
+    const matchesProduct = productFilter === '' || production.product === Number(productFilter);
+    return matchesSearch && matchesZone && matchesProduct;
+  });
+
+  const uniqueZoneIds = [...new Set(productions.map((p) => p.zone))];
+  const uniqueProductIds = [...new Set(productions.map((p) => p.product))];
 
   const handleOpenDialog = (production?: Production) => {
     if (production) {
@@ -118,6 +161,7 @@ const ProductionComponent = () => {
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
+    setError(null);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -133,7 +177,8 @@ const ProductionComponent = () => {
   const handleSubmit = async () => {
     try {
       setError(null);
-        const dataToSubmit = {
+      
+      const dataToSubmit = {
         ...formData,
         product: Number(formData.product),
         quantity: Number(formData.quantity),
@@ -145,179 +190,295 @@ const ProductionComponent = () => {
       
       if (editMode && currentId) {
         // Update existing production
-        const updated = await ProductionAPI.update(currentId, dataToSubmit);
+        const updated = await ProductionAPI.updateProduction(currentId, dataToSubmit);
         setProductions(prev => prev.map(p => p.id === currentId ? updated : p));
-        setSnackbar({
-          open: true,
-          message: 'Production mise à jour avec succès',
-          severity: 'success'
-        });
       } else {
         // Create new production
-        const created = await ProductionAPI.create(dataToSubmit);
+        const created = await ProductionAPI.createProduction(dataToSubmit);
         setProductions(prev => [...prev, created]);
-        setSnackbar({
-          open: true,
-          message: 'Production ajoutée avec succès',
-          severity: 'success'
-        });
       }
       
       handleCloseDialog();
+      await fetchData(); // Refresh data
     } catch (err) {
       console.error('Error saving production:', err);
       setError('Erreur lors de l\'enregistrement de la production');
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!canDeleteProduction) {
-      setSnackbar({
-        open: true,
-        message: 'Vous n\'avez pas la permission de supprimer des productions',
-        severity: 'error'
-      });
-      return;
-    }
+  const handleDeleteProduction = (production: Production) => {
+    setProductionToDelete(production);
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!productionToDelete || !productionToDelete.id) return;
     
-    if (window.confirm('Êtes-vous sûr de vouloir supprimer cette production ?')) {
-      try {
-        await ProductionAPI.delete(id);
-        setProductions(prev => prev.filter(p => p.id !== id));
-        setSnackbar({
-          open: true,
-          message: 'Production supprimée avec succès',
-          severity: 'success'
-        });
-      } catch (err) {
-        console.error('Error deleting production:', err);
-        setSnackbar({
-          open: true,
-          message: 'Erreur lors de la suppression de la production',
-          severity: 'error'
-        });
-      }
+    setDeleteLoading(true);
+    try {
+      await ProductionAPI.deleteProduction(productionToDelete.id);
+      setProductions(prev => prev.filter(p => p.id !== productionToDelete.id));
+      setShowDeleteDialog(false);
+      setProductionToDelete(null);
+    } catch (err) {
+      console.error('Error deleting production:', err);
+      setError('Erreur lors de la suppression de la production');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
-  const handleCloseSnackbar = () => {
-    setSnackbar(prev => ({ ...prev, open: false }));
+  const handleCancelDelete = () => {
+    setShowDeleteDialog(false);
+    setProductionToDelete(null);
   };
 
-  const getProductName = (productId: number) => {
-    const product = products.find(p => p.id === productId);
-    return product ? product.name : 'Produit inconnu';
-  };
-
-  const getZoneName = (zoneId: number) => {
-    const zone = zones.find(z => z.id === zoneId);
-    return zone ? zone.name : 'Zone inconnue';
+  // Handle row clicks for editing
+  const handleRowClick = (params: { row: Production }) => {
+    handleOpenDialog(params.row);
   };
 
   return (
     <PermissionGuard requiredPermission="view_production" fallbackPath="/">
       <Box>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" component="h1" gutterBottom sx={{ 
-            fontWeight: 700,
-            color: theme.palette.primary.main,
-            borderBottom: `2px solid ${theme.palette.primary.light}`,
-            pb: 1,
-            width: 'fit-content'
-          }}>
-            Gestion de la Production
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Suivez et gérez toutes les opérations de production
-          </Typography>
+        <Box 
+          sx={{ 
+            mb: 4,
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            justifyContent: 'space-between',
+            alignItems: { xs: 'flex-start', sm: 'center' }
+          }}
+        >
+          <Box>
+            <Typography variant="h4" component="h1" gutterBottom>
+              Gestion de la Production
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Suivez et gérez toutes les opérations de production
+            </Typography>
+          </Box>
         </Box>
 
-        <Paper sx={{ p: 3, mb: 4, borderRadius: 3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-            <Typography variant="h6">Productions</Typography>
+        <Paper
+          sx={{ 
+            p: 3, 
+            mb: 4, 
+            borderRadius: 3,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.05)'
+          }} 
+        >
+          <Box sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', md: 'row' }, 
+            justifyContent: 'space-between',
+            alignItems: { xs: 'stretch', md: 'flex-end' },
+            mb: 3,
+            gap: 2
+          }}>
+            <Box sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              gap: 2,
+              width: { xs: '100%', md: 'auto' },
+              flexGrow: 1
+            }}>
+              <TextField
+                label="Rechercher"
+                placeholder="Produit ou notes"
+                variant="outlined"
+                size="small"
+                fullWidth
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                  sx: { borderRadius: 2 }
+                }}
+              />
+              <FormControl variant="outlined" size="small" sx={{ minWidth: 150 }}>
+                <InputLabel id="zone-filter-label">Zone</InputLabel>
+                <Select
+                  labelId="zone-filter-label"
+                  id="zone-filter"
+                  value={zoneFilter}
+                  onChange={(e) => setZoneFilter(e.target.value)}
+                  label="Zone"
+                  sx={{ borderRadius: 2 }}
+                >
+                  <MenuItem value="">Toutes les zones</MenuItem>
+                  {uniqueZoneIds.map((zoneId) => (
+                    <MenuItem key={zoneId} value={zoneId}>{getZoneName(zoneId)}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl variant="outlined" size="small" sx={{ minWidth: 200 }}>
+                <InputLabel id="product-filter-label">Produit</InputLabel>
+                <Select
+                  labelId="product-filter-label"
+                  id="product-filter"
+                  value={productFilter}
+                  onChange={(e) => setProductFilter(e.target.value)}
+                  label="Produit"
+                  sx={{ borderRadius: 2 }}
+                >
+                  <MenuItem value="">Tous les produits</MenuItem>
+                  {uniqueProductIds.map((productId) => (
+                    <MenuItem key={productId} value={productId}>{getProductName(productId)}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+
             <PermissionButton
               variant="contained"
               color="primary"
               startIcon={<AddIcon />}
               onClick={() => handleOpenDialog()}
               requiredPermission="add_production"
-              sx={{ borderRadius: 2 }}
+              sx={getStandardPrimaryButtonStyles()}
             >
               Nouvelle Production
             </PermissionButton>
           </Box>
 
           {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
+            <Alert
+              severity="error"
+              sx={{ 
+                mb: 3, 
+                borderRadius: 2,
+                boxShadow: '0 2px 10px rgba(0,0,0,0.08)'
+              }}
+            >
               {error}
             </Alert>
           )}
 
           {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress />
             </Box>
           ) : (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Produit</TableCell>
-                    <TableCell align="right">Quantité</TableCell>
-                    <TableCell>Zone</TableCell>
-                    <TableCell>Date</TableCell>
-                    <TableCell>Notes</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {productions.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} align="center">
-                        Aucune production enregistrée
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    productions.map((production) => (
-                      <TableRow key={production.id}>
-                        <TableCell>{getProductName(production.product)}</TableCell>
-                        <TableCell align="right">{production.quantity}</TableCell>
-                        <TableCell>{getZoneName(production.zone)}</TableCell>
-                        <TableCell>{new Date(production.date).toLocaleDateString()}</TableCell>
-                        <TableCell>{production.notes}</TableCell>
-                        <TableCell align="right">
-                          <IconButton 
-                            color="primary" 
-                            size="small" 
-                            onClick={() => handleOpenDialog(production)}
-                            disabled={!canEditProduction}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton 
-                            color="error" 
-                            size="small" 
-                            onClick={() => production.id && handleDelete(production.id)}
-                            disabled={!canDeleteProduction}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            <StandardDataGrid
+              rows={filteredProductions}
+              columns={[
+                { 
+                  field: 'product', 
+                  headerName: 'Produit', 
+                  flex: 1.5,
+                  valueGetter: (value, row) => {
+                    if (!row) return 'N/A';
+                    return getProductName(row.product);
+                  }
+                },
+                { 
+                  field: 'quantity', 
+                  headerName: 'Quantité', 
+                  flex: 1,
+                  valueGetter: (value, row) => {
+                    if (!row || row.quantity === undefined) return '0';
+                    return row.quantity.toLocaleString();
+                  }
+                },
+                { 
+                  field: 'zone', 
+                  headerName: 'Zone', 
+                  flex: 1,
+                  valueGetter: (value, row) => {
+                    if (!row) return 'N/A';
+                    return getZoneName(row.zone);
+                  }
+                },
+                { 
+                  field: 'date', 
+                  headerName: 'Date', 
+                  flex: 1,
+                  valueGetter: (value, row) => {
+                    if (!row || !row.date) return '';
+                    return new Date(row.date).toLocaleDateString('fr-FR');
+                  }
+                },
+                { 
+                  field: 'notes', 
+                  headerName: 'Notes', 
+                  flex: 1.5,
+                  valueGetter: (value, row) => {
+                    if (!row) return '';
+                    return row.notes || '';
+                  }
+                },
+                {
+                  field: 'actions',
+                  headerName: 'Actions',
+                  flex: 1,
+                  sortable: false,
+                  renderCell: (params: GridRenderCellParams) => (
+                    <Box>
+                      <IconButton
+                        color="primary"
+                        size="small"
+                        sx={{ mr: 1 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDialog(params.row);
+                        }}
+                        disabled={!canEditProduction}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        color="error"
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteProduction(params.row);
+                        }}
+                        disabled={!canDeleteProduction}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  )
+                }
+              ]}
+              paginationModel={paginationModel}
+              onPaginationModelChange={setPaginationModel}
+              onRowClick={handleRowClick}
+              loading={loading}
+              getRowId={(row) => {
+                if (!row || row.id === undefined) return Math.random();
+                return row.id;
+              }}
+            />
           )}
         </Paper>
 
         {/* Add/Edit Dialog */}
-        <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-          <DialogTitle>
+        <Dialog 
+          open={openDialog} 
+          onClose={handleCloseDialog} 
+          maxWidth="sm" 
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 3,
+              boxShadow: '0 8px 30px rgba(0,0,0,0.12)'
+            }
+          }}
+        >
+          <DialogTitle sx={{ 
+            backgroundColor: theme.palette.primary.main,
+            color: 'white',
+            fontWeight: 'bold'
+          }}>
             {editMode ? 'Modifier la Production' : 'Nouvelle Production'}
           </DialogTitle>
-          <DialogContent>
+          <DialogContent sx={{ p: 3, mt: 1 }}>
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12}>
                 <FormControl fullWidth required>
@@ -395,8 +556,13 @@ const ProductionComponent = () => {
               </Grid>
             </Grid>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={handleCloseDialog}>Annuler</Button>
+          <DialogActions sx={{ p: 2 }}>
+            <Button 
+              onClick={handleCloseDialog}
+              sx={getStandardSecondaryButtonStyles()}
+            >
+              Annuler
+            </Button>
             <Button 
               variant="contained" 
               onClick={handleSubmit}
@@ -406,25 +572,63 @@ const ProductionComponent = () => {
                 !formData.zone || 
                 !formData.date
               }
+              sx={getStandardPrimaryButtonStyles()}
             >
               {editMode ? 'Mettre à jour' : 'Ajouter'}
             </Button>
           </DialogActions>
         </Dialog>
 
-        <Snackbar
-          open={snackbar.open}
-          autoHideDuration={6000}
-          onClose={handleCloseSnackbar}
+        {/* Delete Confirmation Dialog */}
+        <Dialog 
+          open={showDeleteDialog} 
+          onClose={handleCancelDelete}
+          PaperProps={{
+            sx: {
+              borderRadius: 3,
+              boxShadow: '0 8px 30px rgba(0,0,0,0.12)'
+            }
+          }}
         >
-          <Alert 
-            onClose={handleCloseSnackbar} 
-            severity={snackbar.severity}
-            variant="filled"
-          >
-            {snackbar.message}
-          </Alert>
-        </Snackbar>
+          <DialogTitle sx={{ 
+            backgroundColor: theme.palette.error.main,
+            color: 'white',
+            fontWeight: 'bold'
+          }}>
+            Confirmer la suppression
+          </DialogTitle>
+          <DialogContent sx={{ p: 3, mt: 2 }}>
+            <DialogContentText>
+              Êtes-vous sûr de vouloir supprimer cette production ?
+              {productionToDelete && (
+                <Box component="span" sx={{ display: 'block', mt: 2, fontWeight: 'bold' }}>
+                  Produit : {getProductName(productionToDelete.product)}<br />
+                  Quantité : {productionToDelete.quantity}<br />
+                  Date : {new Date(productionToDelete.date).toLocaleDateString('fr-FR')}
+                </Box>
+              )}
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button 
+              onClick={handleCancelDelete}
+              disabled={deleteLoading}
+              sx={getStandardSecondaryButtonStyles()}
+            >
+              Annuler
+            </Button>
+            <Button 
+              variant="contained" 
+              color="error" 
+              onClick={handleConfirmDelete}
+              disabled={deleteLoading}
+              startIcon={deleteLoading ? <CircularProgress size={20} /> : <DeleteIcon />}
+              sx={getStandardPrimaryButtonStyles()}
+            >
+              {deleteLoading ? 'Suppression...' : 'Supprimer'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </PermissionGuard>
   );

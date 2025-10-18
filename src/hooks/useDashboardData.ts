@@ -4,17 +4,17 @@
  */
 
 import { useState, useCallback } from 'react';
-import { 
-  DashboardAPI, 
-  ClientsAPI, 
-  AccountsAPI,
-  type ReportData,
-  type DashboardStats,
-  type LowStockProduct,
-  type InventoryStats,
-  type ClientWithAccount,
-  type AccountStatement
-} from '../services/api';
+import * as DashboardAPI from '../services/api/dashboard.api';
+import * as PartnersAPI from '../services/api/partners.api';
+import * as TreasuryAPI from '../services/api/treasury.api';
+import type {
+  DashboardStats,
+  LowStockProduct,
+  InventoryStats,
+  ClientWithAccount,
+  ReportData
+} from '../services/api/index';
+import type { AccountStatement } from '../interfaces/treasury';
 import { 
   parseBalance, 
   generateInventoryTrendData,
@@ -111,7 +111,7 @@ export const useDashboardData = (): UseDashboardDataReturn => {
       }
       
       const data = await DashboardAPI.getStats(period, startDate, endDate);
-      setDashboardStats(data);
+      setDashboardStats(data as DashboardStats);
     } catch (err) {
       console.error('Error fetching dashboard stats:', err);
       throw err;
@@ -127,7 +127,7 @@ export const useDashboardData = (): UseDashboardDataReturn => {
       }
       
       const response = await DashboardAPI.getSalesReport(period, startDate, endDate);
-      setReportData(response);
+      setReportData(response as ReportData);
     } catch (err) {
       console.error('Error fetching sales report:', err);
       throw err;
@@ -142,7 +142,7 @@ export const useDashboardData = (): UseDashboardDataReturn => {
         return;
       }
       
-      const data = await DashboardAPI.getInventoryStats(period, startDate, endDate);
+      const data = await DashboardAPI.getInventoryStats(period, startDate, endDate) as InventoryStats;
       setInventoryStats(data);
       
       // Set inventory value trend
@@ -162,7 +162,7 @@ export const useDashboardData = (): UseDashboardDataReturn => {
   const fetchLowStockProducts = useCallback(async () => {
     try {
       const data = await DashboardAPI.getLowStockProducts();
-      setLowStockProducts(data);
+      setLowStockProducts(data as LowStockProduct[]);
     } catch (err) {
       console.error('Error fetching low stock products:', err);
       throw err;
@@ -172,7 +172,7 @@ export const useDashboardData = (): UseDashboardDataReturn => {
   const fetchClientAccountStatements = useCallback(async () => {
     try {
       console.log('Starting to fetch client account statements...');
-      const clientsData = await ClientsAPI.getAll();
+      const clientsData = await PartnersAPI.fetchClients();
       
       const responseData = Array.isArray(clientsData) 
         ? clientsData 
@@ -180,7 +180,7 @@ export const useDashboardData = (): UseDashboardDataReturn => {
           ? (clientsData as ApiResponse<ClientResponseItem>).results 
           : []);
       
-      const accounts = await AccountsAPI.getByType("client");
+      const accounts = await TreasuryAPI.getAccountsByType("client");
       const clientsWithAccounts = (responseData as ClientResponseItem[])
         .map((client: ClientResponseItem) => {
           const account = accounts.find(acc => acc.id === client.account);
@@ -209,7 +209,7 @@ export const useDashboardData = (): UseDashboardDataReturn => {
           const statements = statementsData.statements 
             ? statementsData.statements 
             : (Array.isArray(statementsData) ? statementsData : []);
-          setAccountStatements(statements);
+          setAccountStatements(statements as AccountStatement[]);
         } catch (statementError) {
           console.error('Error fetching client statements:', statementError);
           setAccountStatements([]);
@@ -233,11 +233,30 @@ export const useDashboardData = (): UseDashboardDataReturn => {
       const data = await DashboardAPI.getSupplierAccountStatements(supplierId);
       
       if (data.supplier_balances) {
-        setSupplierBalances(data.supplier_balances);
+        setSupplierBalances(data.supplier_balances as Array<{
+          id: number;
+          name: string;
+          balance: number;
+          account: number;
+          account_balance: number;
+          last_transaction_date?: string;
+        }>);
       }
       
       if (data.supplier_transactions) {
-        setSupplierTransactions(data.supplier_transactions);
+        setSupplierTransactions(data.supplier_transactions as Array<{
+          id: number;
+          date: string;
+          description: string;
+          transaction_type: string;
+          transaction_type_display: string;
+          reference: string;
+          debit: number | string;
+          credit: number | string;
+          amount: number;
+          balance: number | string;
+          supplier_id: number;
+        }>);
       } else {
         setSupplierTransactions([]);
       }

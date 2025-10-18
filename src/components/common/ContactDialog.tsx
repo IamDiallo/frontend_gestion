@@ -18,13 +18,16 @@ import { t } from '../../utils/translations';
 
 interface ContactFormData {
   name: string;
-  contact_person: string;
-  email: string;
-  phone: string;
-  address: string;
+  contact_person?: string; // Optional to match Client interface
+  email?: string; // Optional to match Client interface
+  phone?: string; // Optional to match Client interface
+  address?: string; // Optional to match Client interface
   account?: number;
   is_active: boolean;
   price_group?: number; // Only for clients
+  zone?: number; // Optional zone field
+  created_at?: string; // Optional audit fields
+  updated_at?: string;
 }
 
 interface ContactDialogProps {
@@ -140,7 +143,7 @@ const ContactDialog: React.FC<ContactDialogProps> = ({
           <Grid item xs={12} sm={6}>
             <StandardTextField
               label="Nom Prenom"
-              value={formData.contact_person}
+              value={formData.contact_person || ''}
               onChange={handleFieldChange('contact_person')}
               fullWidth
             />
@@ -149,7 +152,7 @@ const ContactDialog: React.FC<ContactDialogProps> = ({
           <Grid item xs={12} sm={6}>
             <StandardTextField
               label="Email"
-              value={formData.email}
+              value={formData.email || ''}
               onChange={handleFieldChange('email')}
               type="email"
               fullWidth
@@ -159,7 +162,7 @@ const ContactDialog: React.FC<ContactDialogProps> = ({
           <Grid item xs={12} sm={6}>
             <StandardTextField
               label="Téléphone"
-              value={formData.phone}
+              value={formData.phone || ''}
               onChange={handleFieldChange('phone')}
               fullWidth
             />
@@ -168,7 +171,7 @@ const ContactDialog: React.FC<ContactDialogProps> = ({
           <Grid item xs={12}>
             <StandardTextField
               label="Adresse"
-              value={formData.address}
+              value={formData.address || ''}
               onChange={handleFieldChange('address')}
               multiline
               rows={2}

@@ -28,8 +28,9 @@ import {
   Email as EmailIcon,
   LocationOn as LocationIcon
 } from '@mui/icons-material';
-import { ClientsAPI, AccountsAPI, PriceGroupsAPI } from '../services/api';
-import { Client, Account } from '../interfaces/business';
+import { PartnersAPI, TreasuryAPI, SettingsAPI } from '../services/api/index';
+import { Client } from '../interfaces/business';
+import { Account } from '../interfaces/treasury';
 import { PriceGroup } from '../interfaces/products';
 import { SnackbarState } from '../interfaces/common';
 import PermissionGuard from './PermissionGuard';
@@ -45,7 +46,7 @@ const Clients = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
-  const [formData, setFormData] = useState<Omit<Client, 'id'>>({
+  const [formData, setFormData] = useState<Omit<Client, 'id' | 'zone' | 'created_at' | 'updated_at'>>({
     name: '',
     contact_person: '',
     email: '',
@@ -100,7 +101,7 @@ const Clients = () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await ClientsAPI.getAll();
+        const data = await PartnersAPI.fetchClients();
         setClients(data);
       } catch (err) {
         console.error('Error loading clients:', err);
@@ -119,7 +120,7 @@ const Clients = () => {
     const fetchPriceGroups = async () => {
       try {
         setLoadingPriceGroups(true);
-        const data = await PriceGroupsAPI.getAll();
+        const data = await SettingsAPI.fetchPriceGroups();
         setPriceGroups(data);
       } catch (err) {
         console.error('Error loading price groups:', err);
@@ -143,7 +144,7 @@ const Clients = () => {
       try {
         setLoadingAccounts(true);
         // Get client-type accounts that aren't assigned to clients yet
-        const accounts = await AccountsAPI.getByType('client');
+        const accounts = await TreasuryAPI.getAccountsByType('client');
         const usedAccountIds = clients
           .filter(c => c.account !== undefined && c.account !== accountId)
           .map(c => c.account);
@@ -281,8 +282,8 @@ const Clients = () => {
 
       if (editMode && currentId) {
         // Update client via API
-        await ClientsAPI.update(currentId, formData as Client);
-        const data = await ClientsAPI.getAll();
+        await PartnersAPI.updateClient(currentId, formData as Client);
+        const data = await PartnersAPI.fetchClients();
         setClients(data);
         setSnackbar({
           open: true,
@@ -291,8 +292,8 @@ const Clients = () => {
         });
       } else {
         // Add client via API
-        await ClientsAPI.create(formData as Client);
-        const data = await ClientsAPI.getAll();
+        await PartnersAPI.createClient(formData as Client);
+        const data = await PartnersAPI.fetchClients();
         setClients(data);
         setSnackbar({
           open: true,
@@ -336,7 +337,7 @@ const Clients = () => {
         return;
       }
       
-      await ClientsAPI.delete(client.id!);
+      await PartnersAPI.deleteClient(client.id!);
       setClients(clients.filter(c => c.id !== client.id));
       setSnackbar({
         open: true,

@@ -1,47 +1,40 @@
-// Business entities like clients, suppliers, zones
-export interface Client {
+/**
+ * Legacy Business Interfaces
+ * @deprecated Use domain-specific interfaces instead
+ * This file now re-exports from domain files for backward compatibility
+ * 
+ * Migration guide:
+ * - Client → import from '../interfaces/partners'
+ * - Supplier → import from '../interfaces/partners'
+ * - Zone → import from '../interfaces/core'
+ * - Account → import from '../interfaces/treasury'
+ */
+
+// Re-export from domain-specific interfaces
+export type { Client, Supplier, Employee } from './partners';
+export type { Zone } from './core';
+export type { Account, AccountStatement } from './treasury';
+export type { OutstandingSale } from './sales';
+
+// Import types for use in local interfaces
+import type { AccountStatement } from './treasury';
+import type { OutstandingSale } from './sales';
+
+// Re-export OutstandingSupply from inventory
+export interface OutstandingSupply {
   id: number;
-  name: string;
-  contact_person: string;
-  email: string;
-  phone: string;
-  address: string;
-  price_group?: number;
-  account?: number;
-  is_active: boolean;
+  reference: string;
+  date: string;
+  total_amount: number;
+  paid_amount: number;
+  remaining_amount: number;
+  payment_status: 'unpaid' | 'partially_paid' | 'paid' | 'overpaid';
+  supplier?: number;
+  supplier_name?: string;
+  status?: string;
 }
 
-export interface Supplier {
-  id?: number;
-  name: string;
-  contact_person: string;
-  email: string;
-  phone: string;
-  address: string;
-  account?: number;
-  is_active: boolean;
-}
-
-export interface Zone {
-  id?: number;
-  name: string;
-  address: string;
-  description?: string;
-  is_active: boolean;
-}
-
-export interface Account {
-  id?: number;
-  name: string;
-  account_number?: string;
-  account_type?: string;
-  currency?: number;
-  initial_balance: number | string;
-  current_balance: number | string;
-  description?: string;
-  is_active: boolean;
-}
-
+// Keep only legacy UI types that don't belong to a domain
 export interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
@@ -58,44 +51,6 @@ export interface ClientAccountBalance {
   };
   statements: AccountStatement[];
   outstanding_sales: OutstandingSale[];
-}
-
-export interface AccountStatement {
-  id: number;
-  date: string;
-  transaction_type: string;
-  transaction_type_display: string;
-  reference: string;
-  description: string;
-  debit: number | string;
-  credit: number | string;
-  balance: number | string;
-  account: number; // Account ID that this statement belongs to
-  account_name?: string; // Added to match backend serializer
-}
-
-export interface OutstandingSale {
-  id: number;
-  reference: string;
-  date: string;
-  total_amount: number;
-  paid_amount: number;
-  balance?: number; // Deprecated - use remaining_amount
-  remaining_amount: number;
-  payment_status: string;
-}
-
-export interface OutstandingSupply {
-  id: number;
-  reference: string;
-  date: string;
-  total_amount: number;
-  paid_amount: number;
-  remaining_amount: number;
-  payment_status: 'unpaid' | 'partially_paid' | 'paid' | 'overpaid';
-  supplier?: number;
-  supplier_name?: string;
-  status?: string;
 }
 
 export interface SupplierPaymentResponse {

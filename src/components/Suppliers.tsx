@@ -31,11 +31,22 @@ import {
 import { Supplier } from '../interfaces/business';
 import PermissionGuard from './PermissionGuard';
 import { usePermissionCheck } from '../hooks/usePermissionCheck';
-import { SuppliersAPI } from '../services/api';
-import { AccountsAPI } from '../services/api';
+import * as PartnersAPI from '../services/api/partners.api';
+import * as TreasuryAPI from '../services/api/treasury.api';
 import { useNavigate } from 'react-router-dom';
 
-const initialFormState: Omit<Supplier, 'id'> = {
+// Form data type matching ContactDialog requirements
+interface SupplierFormData {
+  name: string;
+  contact_person: string;
+  email: string;
+  phone: string;
+  address: string;
+  account?: number;
+  is_active: boolean;
+}
+
+const initialFormState: SupplierFormData = {
   name: '',
   contact_person: '',
   email: '',
@@ -55,7 +66,7 @@ const Suppliers = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
-  const [formData, setFormData] = useState(initialFormState);
+  const [formData, setFormData] = useState<SupplierFormData>(initialFormState);
   const [editMode, setEditMode] = useState(false);
   const [currentId, setCurrentId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -177,10 +188,10 @@ const Suppliers = () => {
     const fetchSuppliers = async () => {
       try {
         setLoading(true);
-        const data = await SuppliersAPI.getAll();
+        const data = await PartnersAPI.fetchSuppliers();
         setSuppliers(data);
       } catch (err) {
-        console.error('Error loading clients:', err);
+        console.error('Error loading suppliers:', err);
       } finally {
         setLoading(false);
       }
@@ -195,7 +206,7 @@ const Suppliers = () => {
     const fetchAvailableAccounts = async (accountId: number | undefined) => {
       try {
         setLoadingAccounts(true);
-        const accounts = await AccountsAPI.getByType('supplier');
+        const accounts = await TreasuryAPI.getAccountsByType('supplier');
         // Filter out accounts already assigned to suppliers
         const usedAccountIds = suppliers
           .filter(s => s.account !== undefined && s.account !== accountId)
@@ -270,8 +281,8 @@ const Suppliers = () => {
       }
       if (editMode && currentId) {
         // Update supplier via API
-        await SuppliersAPI.update(currentId, formData as Supplier);
-        const data = await SuppliersAPI.getAll();
+        await PartnersAPI.updateSupplier(currentId, formData as Supplier);
+        const data = await PartnersAPI.fetchSuppliers();
         setSuppliers(data);
         setSnackbar({
           open: true,
@@ -280,8 +291,8 @@ const Suppliers = () => {
         });
       } else {
         // Add supplier via API
-        await SuppliersAPI.create(formData as Supplier);
-        const data = await SuppliersAPI.getAll();
+        await PartnersAPI.createSupplier(formData as Supplier);
+        const data = await PartnersAPI.fetchSuppliers();
         setSuppliers(data);
         setSnackbar({
           open: true,

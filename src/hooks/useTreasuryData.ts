@@ -4,14 +4,11 @@
  */
 
 import { useState, useCallback } from 'react';
-import api, {
-  ClientsAPI,
-  SuppliersAPI,
-  TreasuryAPI,
-  AccountsAPI,
-  SettingsAPI,
-  SalesAPI
-} from '../services/api';
+import { api } from '../services/api/config';
+import * as PartnersAPI from '../services/api/partners.api';
+import * as TreasuryAPI from '../services/api/treasury.api';
+import * as SettingsAPI from '../services/api/settings.api';
+import * as SalesAPI from '../services/api/sales.api';
 import {
   Client,
   Supplier,
@@ -100,7 +97,7 @@ export const useTreasuryData = (): UseTreasuryDataReturn => {
 
   const fetchClients = useCallback(async () => {
     try {
-      const data = await ClientsAPI.getAll();
+      const data = await PartnersAPI.fetchClients();
       setClients(data);
     } catch (err) {
       console.error('Error fetching clients:', err);
@@ -111,7 +108,7 @@ export const useTreasuryData = (): UseTreasuryDataReturn => {
 
   const fetchSuppliers = useCallback(async () => {
     try {
-      const data = await SuppliersAPI.getAll();
+      const data = await PartnersAPI.fetchSuppliers();
       setSuppliers(data);
     } catch (err) {
       console.error('Error fetching suppliers:', err);
@@ -122,7 +119,7 @@ export const useTreasuryData = (): UseTreasuryDataReturn => {
 
   const fetchAccounts = useCallback(async () => {
     try {
-      const data = await AccountsAPI.getAll();
+      const data = await TreasuryAPI.fetchAccounts();
       setAccounts(data);
     } catch (err) {
       console.error('Error fetching accounts:', err);
@@ -133,7 +130,7 @@ export const useTreasuryData = (): UseTreasuryDataReturn => {
 
   const fetchAllAccounts = useCallback(async () => {
     try {
-      const data = await AccountsAPI.getAll();
+      const data = await TreasuryAPI.fetchAccounts();
       setAllAccounts(data);
     } catch (err) {
       console.error('Error fetching all accounts:', err);
@@ -146,8 +143,8 @@ export const useTreasuryData = (): UseTreasuryDataReturn => {
     try {
       setLoadingResources(true);
       const [accountsData, paymentMethodsData] = await Promise.all([
-        TreasuryAPI.getAccounts(),
-        SettingsAPI.getSettings('payment-methods')
+        TreasuryAPI.fetchAccounts(),
+        SettingsAPI.fetchPaymentMethods()
       ]);
       setAccounts(accountsData);
       setPaymentMethods(paymentMethodsData);
@@ -175,9 +172,9 @@ export const useTreasuryData = (): UseTreasuryDataReturn => {
 
       let data: AccountStatement[] = [];
       if (accountId) {
-        data = await TreasuryAPI.getAccountStatements(accountId) as AccountStatement[];
+        data = await TreasuryAPI.fetchAccountStatements(accountId) as AccountStatement[];
       } else {
-        data = await TreasuryAPI.getAccountStatements() as AccountStatement[];
+        data = await TreasuryAPI.fetchAccountStatements() as AccountStatement[];
       }
 
       setAccountMovements(data);
@@ -219,7 +216,7 @@ export const useTreasuryData = (): UseTreasuryDataReturn => {
       setLoadingClientData(true);
       
       // First, get the client to retrieve their account ID
-      const client = await ClientsAPI.getById(clientId);
+      const client = await PartnersAPI.fetchClientById(clientId);
       
       if (!client.account) {
         throw new Error('Ce client n\'a pas de compte associé');
@@ -324,7 +321,7 @@ export const useTreasuryData = (): UseTreasuryDataReturn => {
       setLoadingSupplierData(true);
       
       // First, get the supplier to retrieve their account ID
-      const supplier = await SuppliersAPI.getById(supplierId);
+      const supplier = await PartnersAPI.fetchSupplierById(supplierId);
       
       if (!supplier.account) {
         throw new Error('Ce fournisseur n\'a pas de compte associé');
