@@ -1,4 +1,63 @@
 /**
+ * ⚠️ DEPRECATED - DO NOT USE THIS COMPONENT ⚠️
+ * 
+ * This component has been DEPRECATED and replaced by modular components.
+ * 
+ * Reason for deprecation:
+ * - Component was too large (1,456 lines) - violated Single Responsibility Principle
+ * - Mixed concerns: Sales, Invoices, Quotes all in one file
+ * - Difficult to maintain, test, and understand
+ * - Performance issues due to large bundle size
+ * 
+ * Migration Guide:
+ * Instead of using SaleDialogManager, use the new modular structure:
+ * 
+ * OLD:
+ * ```tsx
+ * import SaleDialogManager from './sales/SaleDialogManager';
+ * 
+ * <SaleDialogManager
+ *   dialogs={salesDialogs}
+ *   data={salesData}
+ *   onSuccess={handleSuccess}
+ *   onError={handleError}
+ * />
+ * ```
+ * 
+ * NEW:
+ * ```tsx
+ * import SalesDialogs from './sales/SalesDialogs';
+ * 
+ * <SalesDialogs
+ *   dialogs={salesDialogs}
+ *   data={salesData}
+ *   onSuccess={handleSuccess}
+ *   onError={handleError}
+ * />
+ * ```
+ * 
+ * The new architecture consists of:
+ * - SaleDialog.tsx (550 lines) - Sale creation/editing only
+ * - InvoiceDialog.tsx (220 lines) - Invoice creation/editing only
+ * - QuoteDialog.tsx (320 lines) - Quote creation/editing only
+ * - SalesDialogs.tsx (150 lines) - Coordination wrapper
+ * 
+ * Benefits:
+ * ✅ Single Responsibility - Each component has one clear purpose
+ * ✅ Maintainability - Easier to locate and fix bugs
+ * ✅ Testability - Can test each dialog independently
+ * ✅ Performance - Smaller bundle, potential for code splitting
+ * ✅ Reusability - Components can be reused in other contexts
+ * 
+ * Deprecation Date: October 19, 2025
+ * Scheduled for Removal: November 19, 2025 (30 days)
+ * 
+ * See: SALES_DIALOG_REFACTORING.md for full migration guide
+ * 
+ * ⚠️ THIS FILE WILL BE DELETED IN 30 DAYS ⚠️
+ */
+
+/**
  * SaleDialogManager Component  
  * Complete implementation of all sale-related dialogs
  * Migrated from Sales.BACKUP.txt to work with hooks architecture
@@ -34,9 +93,12 @@ import {
 import {
   Delete as DeleteIcon,
   Add as AddIcon,
-  ReceiptLong
+  ReceiptLong,
+  QrCodeScanner as QrCodeScannerIcon
 } from '@mui/icons-material';
 import { StatusChip, DeleteDialog, SalesWorkflow } from '../common';
+import QRScanner from '../inventory/QRScanner';
+import { useQRScanner } from '../../hooks/useQRScanner';
 import * as SalesAPI from '../../services/api/sales.api';
 import type { SalesStatus } from '../common/SalesWorkflow';
 
@@ -63,17 +125,20 @@ const SaleDialogManager: React.FC<SaleDialogManagerProps> = ({
     closeInvoiceDialog,
     closeQuoteDialog,
     closeQuoteConversionDialog,
-    closeDeleteDialog
+    closeDeleteDialog,
+    updateSaleDialog
   } = dialogs;
 
   const { clients, zones, sales, productsWithStock, availableStock } = data;
 
-  // Local state for Sale dialog
-  const [selectedClient, setSelectedClient] = useState<any>(null);
-  const [selectedZone, setSelectedZone] = useState<number>(0);
-  const [selectedProducts, setSelectedProducts] = useState<any[]>([]);
-  const [currentProduct, setCurrentProduct] = useState<any>(null);
-  const [currentQuantity, setCurrentQuantity] = useState(1);
+  // Use saleDialog state from hook instead of local state
+  const selectedClient = saleDialog.selectedClient;
+  const selectedZone = saleDialog.selectedZone;
+  const selectedProducts = saleDialog.selectedProducts;
+  const currentProduct = saleDialog.currentProduct;
+  const currentQuantity = saleDialog.currentQuantity;
+  
+  // Local state for validation errors
   const [stockError, setStockError] = useState('');
 
   // Local state for Invoice dialog
@@ -84,6 +149,15 @@ const SaleDialogManager: React.FC<SaleDialogManagerProps> = ({
   const [newQuoteData, setNewQuoteData] = useState<any>({
     status: 'draft'
   });
+
+  // QR Scanner integration
+  const qrScanner = useQRScanner(
+    productsWithStock || [],
+    (product, quantity) => {
+      // Set the scanned product as current product
+      updateSaleDialog({ currentProduct: product, currentQuantity: quantity });
+    }
+  );
 
   // Get allowed transitions based on current status
   const getAllowedTransitions = (status: string): SalesStatus[] => {
@@ -127,11 +201,11 @@ const SaleDialogManager: React.FC<SaleDialogManagerProps> = ({
           // Set client from sale data
           if (saleDetails.client && clients) {
             const client = clients.find((c: any) => c.id === saleDetails.client);
-            if (client) setSelectedClient(client);
+            if (client) updateSaleDialog({ selectedClient: client });
           }
           
           // Set zone
-          if (saleDetails.zone) setSelectedZone(saleDetails.zone);
+          if (saleDetails.zone) updateSaleDialog({ selectedZone: saleDetails.zone });
           
           // Set products from sale items
           if (saleDetails.items && saleDetails.items.length > 0) {
@@ -156,18 +230,20 @@ const SaleDialogManager: React.FC<SaleDialogManagerProps> = ({
         }
       } else if (!saleDialog?.open) {
         // Reset when closing
-        setSelectedClient(null);
-        setSelectedZone(0);
-        setSelectedProducts([]);
-        setCurrentProduct(null);
-        setCurrentQuantity(1);
+        updateSaleDialog({
+          selectedClient: null,
+          selectedZone: 1,
+          selectedProducts: [],
+          currentProduct: null,
+          currentQuantity: 1
+        });
         setStockError('');
       }
     };
     
     fetchSaleDetails();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saleDialog?.open, saleDialog?.sale, saleDialog?.mode, clients]);
+  }, [saleDialog?.open, saleDialog?.sale, saleDialog?.mode, clients, updateSaleDialog]);
 
   // Initialize Invoice dialog data when opening in edit mode
   useEffect(() => {
@@ -323,19 +399,25 @@ const SaleDialogManager: React.FC<SaleDialogManagerProps> = ({
         ...updatedProducts[existingIndex],
         quantity: newTotalQuantity,
       };
-      setSelectedProducts(updatedProducts);
+      updateSaleDialog({ selectedProducts: updatedProducts });
     } else {
       // Add new product to cart
-      setSelectedProducts([...selectedProducts, { product: currentProduct, quantity: currentQuantity }]);
+      updateSaleDialog({ 
+        selectedProducts: [...selectedProducts, { product: currentProduct, quantity: currentQuantity }]
+      });
     }
 
-    setCurrentProduct(null);
-    setCurrentQuantity(1);
+    updateSaleDialog({ 
+      currentProduct: null,
+      currentQuantity: 1
+    });
   };
 
   // Handle remove product
   const handleRemoveProduct = (index: number) => {
-    setSelectedProducts(selectedProducts.filter((_, i) => i !== index));
+    updateSaleDialog({ 
+      selectedProducts: selectedProducts.filter((_, i) => i !== index)
+    });
   };
 
   // Handle save sale (create or update)
@@ -397,11 +479,13 @@ const SaleDialogManager: React.FC<SaleDialogManagerProps> = ({
       closeSaleDialog();
       
       // Reset state
-      setSelectedClient(null);
-      setSelectedZone(0);
-      setSelectedProducts([]);
-      setCurrentProduct(null);
-      setCurrentQuantity(1);
+      updateSaleDialog({
+        selectedClient: null,
+        selectedZone: 1,
+        selectedProducts: [],
+        currentProduct: null,
+        currentQuantity: 1
+      });
       setStockError('');
     } catch (error: any) {
       console.error('Error saving sale:', error);
@@ -767,7 +851,7 @@ const SaleDialogManager: React.FC<SaleDialogManagerProps> = ({
                   getOptionLabel={(option) => option.name}
                   value={selectedClient}
                   onChange={(event, newValue) => {
-                    setSelectedClient(newValue);
+                    updateSaleDialog({ selectedClient: newValue });
                   }}
                   renderInput={(params) => (
                     <TextField  {...params}
@@ -789,7 +873,7 @@ const SaleDialogManager: React.FC<SaleDialogManagerProps> = ({
                   <InputLabel>Zone</InputLabel>
                   <Select
                     value={selectedZone}
-                    onChange={(e) => setSelectedZone(Number(e.target.value))}
+                    onChange={(e) => updateSaleDialog({ selectedZone: Number(e.target.value) })}
                     label="Zone"
                   >
                     {(zones || []).map((zone: any) => (
@@ -808,8 +892,7 @@ const SaleDialogManager: React.FC<SaleDialogManagerProps> = ({
                   getOptionLabel={(option) => `${option.name} (Stock: ${availableStock[option.id!] || 0})`}
                   value={currentProduct}
                   onChange={(event, newValue) => {
-                    setCurrentProduct(newValue);
-                    setCurrentQuantity(1);
+                    updateSaleDialog({ currentProduct: newValue, currentQuantity: 1 });
                   }}
                   renderInput={(params) => (
                     <TextField  {...params}
@@ -825,14 +908,23 @@ const SaleDialogManager: React.FC<SaleDialogManagerProps> = ({
                   )}
                   sx={{ flexGrow: 1 }} 
                 />
+                
                 <TextField
                   label="Quantité"
                   type="number"
                   value={currentQuantity}
-                  onChange={(e) => setCurrentQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) => updateSaleDialog({ currentQuantity: Math.max(1, parseInt(e.target.value) || 1) })}
                   sx={{ width: 100 }}
                   inputProps={{ min: 1 }}
                 />
+                <IconButton
+                  color="primary"
+                  onClick={qrScanner.openScanner}
+                  title="Scanner QR"
+                  sx={{ height: 'fit-content' }}
+                >
+                  <QrCodeScannerIcon />
+                </IconButton>
                 <Button
                   variant="contained"
                   onClick={handleAddProduct}
@@ -1412,6 +1504,9 @@ const SaleDialogManager: React.FC<SaleDialogManagerProps> = ({
         item={deleteDialog?.item}
         confirmationInfo={deleteDialog?.confirmationInfo}
       />
+
+      {/* QR Scanner Dialog */}
+      <QRScanner scanner={qrScanner} />
     </>
   );
 };

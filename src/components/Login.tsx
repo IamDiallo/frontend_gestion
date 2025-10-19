@@ -19,6 +19,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthService } from '../services/auth';
+import { isTokenExpired } from '../utils/tokenValidation';
 import Logo from './common/Logo';
 
 interface LocationState {
@@ -40,10 +41,19 @@ const Login = () => {
   // Check if user is already logged in
   useEffect(() => {
     const token = localStorage.getItem('access_token');
-    if (token) {
-      // Redirect to the home page or the page the user was trying to access
+    if (token && !isTokenExpired(token)) {
+      // Token exists and is valid, redirect to the home page or intended destination
       const from = (location.state as LocationState)?.from?.pathname || '/';
       navigate(from);
+    } else if (token && isTokenExpired(token)) {
+      // Token exists but is expired, clear it
+      console.log('Token expired, clearing auth data');
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('token_expiration');
+      localStorage.removeItem('user_permissions');
+      localStorage.removeItem('user_role');
+      localStorage.removeItem('is_admin');
     }
   }, [location, navigate]);
 

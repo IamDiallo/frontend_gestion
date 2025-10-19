@@ -19,7 +19,6 @@ import {
 } from '@mui/material';
 import { 
   Add as AddIcon, 
-  QrCodeScanner as QrCodeScannerIcon,
   Visibility as VisibilityIcon,
   Clear as ClearIcon
 } from '@mui/icons-material';
@@ -43,7 +42,6 @@ interface SalesTabProps {
   onAdd: () => void;
   onEdit: (sale: ExtendedSale) => void;
   onDelete: (sale: ExtendedSale, confirmationInfo?: Record<string, unknown>) => void;
-  onOpenScanner: () => void;
 }
 
 const SalesTab: React.FC<SalesTabProps> = ({
@@ -58,8 +56,7 @@ const SalesTab: React.FC<SalesTabProps> = ({
   setDateFilter,
   onAdd,
   onEdit,
-  onDelete,
-  onOpenScanner
+  onDelete
 }) => {
   
   // Format currency
@@ -298,14 +295,6 @@ const SalesTab: React.FC<SalesTabProps> = ({
           </FormControl>
         </Box>
         <Stack direction="row" spacing={2}>
-          <PermissionButton
-            requiredPermission="sales.add_sale"
-            variant="outlined"
-            startIcon={<QrCodeScannerIcon />}
-            onClick={onOpenScanner}
-          >
-            Scanner QR
-          </PermissionButton>
           <PermissionButton
             requiredPermission="sales.add_sale"
             variant="contained"

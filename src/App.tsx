@@ -20,6 +20,7 @@ import UserManagement from './components/UserManagement';
 import Settings from './components/Settings';
 import PrivateRoute from './components/PrivateRoute';
 import Inventory from './components/Inventory';
+import Profile from './components/Profile';
 
 const App: React.FC = () => {
   return (
@@ -43,6 +44,7 @@ const App: React.FC = () => {
                 <Route path="treasury" element={<Treasury />} />
                 <Route path="users" element={<UserManagement />} />
                 <Route path="settings" element={<Settings />} />
+                <Route path="profile" element={<Profile />} />
                 
                 {/* Redirect any unknown routes to dashboard */}
                 <Route path="*" element={<Navigate to="/" replace />} />

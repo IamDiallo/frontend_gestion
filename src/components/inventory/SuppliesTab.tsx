@@ -158,7 +158,7 @@ export const SuppliesTab: React.FC<SuppliesTabProps> = ({
             });
           }}
           color="primary"
-        />,
+        />, 
         <GridActionsCellItem
           icon={
             <Tooltip title="Modifier">
@@ -167,7 +167,6 @@ export const SuppliesTab: React.FC<SuppliesTabProps> = ({
           }
           label="Modifier"
           onClick={() => onEdit(params.row)}
-          disabled={params.row.status === 'received'}
         />,
         <GridActionsCellItem
           icon={
@@ -177,7 +176,6 @@ export const SuppliesTab: React.FC<SuppliesTabProps> = ({
           }
           label="Supprimer"
           onClick={() => handleDeleteClick(params.row.id)}
-          disabled={params.row.status === 'received'}
         />,
       ],
     },

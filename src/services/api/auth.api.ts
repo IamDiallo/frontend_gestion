@@ -167,8 +167,9 @@ export const checkAuthentication = async (): Promise<AuthCheckResponse> => {
       return { authenticated: false, reason: 'No token found' };
     }
     
+    // Reduced timeout for faster response
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
     const currentUserEndpoint = '/core/users/me/';
     const legacyCurrentUserEndpoint = '/users/me/';
     

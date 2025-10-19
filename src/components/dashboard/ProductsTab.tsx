@@ -44,32 +44,14 @@ const ProductsTab: React.FC<ProductsTabProps> = ({ reportData, lowStockProducts 
     { field: 'unit', headerName: 'Unité', flex: 0.5 }
   ];
 
+
   return (
     <Grid container spacing={3}>
-      {/* Top Products by Revenue */}
+      {/* Produits les plus vendus par quantité */}
       <Grid item xs={12} lg={6}>
         <Paper sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>
-            Top produits par chiffre d'affaires
-          </Typography>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={reportData.top_products.slice(0, 10)}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-              <YAxis />
-              <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-              <Legend />
-              <Bar dataKey="revenue" fill={CHART_COLORS[0]} name="Chiffre d'affaires" />
-            </BarChart>
-          </ResponsiveContainer>
-        </Paper>
-      </Grid>
-
-      {/* Top Products by Quantity */}
-      <Grid item xs={12} lg={6}>
-        <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Top produits par quantité
+            Produits les plus vendus par quantité
           </Typography>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={reportData.top_products.slice(0, 10)}>
@@ -79,6 +61,25 @@ const ProductsTab: React.FC<ProductsTabProps> = ({ reportData, lowStockProducts 
               <Tooltip />
               <Legend />
               <Bar dataKey="quantity" fill={CHART_COLORS[1]} name="Quantité vendue" />
+            </BarChart>
+          </ResponsiveContainer>
+        </Paper>
+      </Grid>
+
+      {/* Produits les plus vendus par chiffre d'affaires */}
+      <Grid item xs={12} lg={6}>
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Produits les plus vendus par chiffre d'affaires
+          </Typography>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={reportData.top_products.slice(0, 10)}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+              <YAxis />
+              <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+              <Legend />
+              <Bar dataKey="revenue" fill={CHART_COLORS[0]} name="Chiffre d'affaires" />
             </BarChart>
           </ResponsiveContainer>
         </Paper>

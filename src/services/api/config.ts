@@ -5,6 +5,7 @@
 
 import axios, { AxiosResponse, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { toast } from "react-toastify";
+import { isTokenExpired, shouldRefreshToken } from '../../utils/tokenValidation';
 
 interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -25,15 +26,47 @@ const api = axios.create({
 api.interceptors.request.use(
   async (config: CustomAxiosRequestConfig) => {
     const token = localStorage.getItem("access_token");
-    const tokenExpiration = localStorage.getItem("token_expiration");
 
-    if (token && tokenExpiration) {
-      const expirationTime = parseInt(tokenExpiration, 10);
-      const currentTime = Date.now();
-      const timeToExpire = expirationTime - currentTime;
+    if (token) {
+      // Check if token is already expired
+      if (isTokenExpired(token)) {
+        console.log('Token is expired, attempting refresh before request');
+        try {
+          const refreshToken = localStorage.getItem("refresh_token");
+          if (!refreshToken) {
+            throw new Error("No refresh token available");
+          }
 
-      // Refresh proactively if expiring within 1 min
-      if (timeToExpire < 60000 && timeToExpire > 0) {
+          const response = await axios.post(`${API_URL}/token/refresh/`, {
+            refresh: refreshToken,
+          });
+
+          if (response.data?.access) {
+            const newAccess = response.data.access;
+            localStorage.setItem("access_token", newAccess);
+
+            if (response.data.refresh) {
+              localStorage.setItem("refresh_token", response.data.refresh);
+            }
+
+            const newExpirationTime = Date.now() + 15 * 60 * 1000;
+            localStorage.setItem("token_expiration", newExpirationTime.toString());
+
+            config.headers.Authorization = `Bearer ${newAccess}`;
+            return config;
+          }
+        } catch (error) {
+          console.error("Token refresh failed:", error);
+          // Clear tokens and let response interceptor handle redirect
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("refresh_token");
+          localStorage.removeItem("token_expiration");
+          return Promise.reject(error);
+        }
+      } 
+      // Check if token should be refreshed proactively (within 2 minutes of expiry)
+      else if (shouldRefreshToken(token)) {
+        console.log('Token expiring soon, proactive refresh');
         try {
           const refreshToken = localStorage.getItem("refresh_token");
           if (refreshToken) {
@@ -58,13 +91,14 @@ api.interceptors.request.use(
           }
         } catch (error) {
           console.error("Proactive refresh failed:", error);
+          // Continue with existing token
         }
       }
-    }
 
-    if (token) {
+      // Use the token (original or refreshed)
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
     return config;
   },
   (error: AxiosError) => Promise.reject(error)
@@ -98,18 +132,26 @@ api.interceptors.response.use(
         api.defaults.headers.common["Authorization"] = `Bearer ${newAccess}`;
         return api(originalRequest);
       } catch (err) {
+        // Clear all auth data
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
         localStorage.removeItem("token_expiration");
+        localStorage.removeItem("user_permissions");
+        localStorage.removeItem("user_role");
+        localStorage.removeItem("is_admin");
 
-        toast.error("Your session has expired. Please log in again.", {
-          position: "top-center",
-          autoClose: 3000,
-        });
+        // Only show toast and redirect if not already on login page
+        if (!window.location.pathname.includes('/login')) {
+          toast.error("Your session has expired. Please log in again.", {
+            position: "top-center",
+            autoClose: 2000,
+          });
 
-        setTimeout(() => {
-          window.location.href = "/login";
-        }, 3200);
+          // Reduced delay for faster redirect
+          setTimeout(() => {
+            window.location.href = "/login";
+          }, 500);
+        }
 
         return Promise.reject(err);
       }

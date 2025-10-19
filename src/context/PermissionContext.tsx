@@ -43,12 +43,13 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({ children
       
       // Get the token
       const token = localStorage.getItem('access_token');
-        if (!token) {
+      if (!token) {
         // No token means user is not logged in
         setUserPermissions([]);
         setIsAdmin(false);
         setUserRole(null);
         setUserGroups([]);
+        setLoading(false);
         return;
       }
 

@@ -292,7 +292,7 @@ export const useTreasuryData = (): UseTreasuryDataReturn => {
     try {
       setLoadingClientData(true);
       // Fetch all account statements without filtering by specific account
-      const response = await api.get('/account-statements/');
+      const response = await api.get('/treasury/account-statements/');
       const allStatements = Array.isArray(response.data) ? response.data : 
         (response.data && response.data.results ? response.data.results : []);
       
@@ -370,7 +370,7 @@ export const useTreasuryData = (): UseTreasuryDataReturn => {
     try {
       setLoadingSupplierData(true);
       // Fetch all account statements without filtering by specific account
-      const response = await api.get('/account-statements/');
+      const response = await api.get('/treasury/account-statements/');
       const allStatements = Array.isArray(response.data) ? response.data : 
         (response.data && response.data.results ? response.data.results : []);
       

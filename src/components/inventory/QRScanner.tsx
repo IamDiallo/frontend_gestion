@@ -48,13 +48,19 @@ export const QRScanner: React.FC<QRScannerProps> = ({ scanner }) => {
   useEffect(() => {
     if (qrState.isOpen && !qrState.isScanning && !qrState.scannedProduct && !hasStartedScanning.current) {
       hasStartedScanning.current = true;
-      // Small delay to ensure DOM element is ready
+      // Longer delay to ensure DOM element is ready and rendered
       const timer = setTimeout(() => {
-        startScanning(scannerElementId);
-      }, 300);
+        const element = document.getElementById(scannerElementId);
+        if (element) {
+          startScanning(scannerElementId);
+        } else {
+          console.error(`Element with id ${scannerElementId} not found`);
+          hasStartedScanning.current = false;
+        }
+      }, 500);
       return () => clearTimeout(timer);
     }
-  }, [qrState.isOpen, qrState.isScanning, qrState.scannedProduct, startScanning]);
+  }, [qrState.isOpen, qrState.isScanning, qrState.scannedProduct, startScanning, scannerElementId]);
   
   /**
    * Stop scanning when dialog closes
@@ -137,13 +143,15 @@ export const QRScanner: React.FC<QRScannerProps> = ({ scanner }) => {
       </DialogTitle>
       
       <DialogContent>
-        {/* Camera Preview */}
-        {qrState.isScanning && (
+        {/* Camera Preview - Always render but control visibility */}
+        {!qrState.scannedProduct && !qrState.error && (
           <Box sx={{ mb: 2 }}>
-            <div id={scannerElementId} style={{ width: '100%' }} />
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
-              Positionnez le code-barres dans le cadre
-            </Typography>
+            <div id={scannerElementId} style={{ width: '100%', minHeight: '300px' }} />
+            {qrState.isScanning && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: 'center' }}>
+                Positionnez le code-barres dans le cadre
+              </Typography>
+            )}
           </Box>
         )}
         
@@ -194,9 +202,9 @@ export const QRScanner: React.FC<QRScannerProps> = ({ scanner }) => {
           </Box>
         )}
         
-        {/* Loading State */}
+        {/* Loading State - Show above the video element */}
         {!qrState.isScanning && !qrState.scannedProduct && !qrState.error && (
-          <Box sx={{ textAlign: 'center', py: 4 }}>
+          <Box sx={{ textAlign: 'center', py: 2, position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}>
             <Typography color="text.secondary">
               Initialisation de la caméra...
             </Typography>

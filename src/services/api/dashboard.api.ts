@@ -92,7 +92,7 @@ export const fetchSalesReport = getSalesReport;
 
 export const getClientAccountStatements = async (clientId?: number): Promise<{ statements: unknown[] }> => {
   if (clientId) {
-    const response = await api.get(`/account-statements/?client=${clientId}`);
+    const response = await api.get(`/treasury/account-statements/?client=${clientId}`);
     return {
       statements: response.data?.results || response.data || []
     };

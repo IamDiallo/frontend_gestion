@@ -26,11 +26,13 @@ import { useSalesData } from '../hooks/useSalesData';
 import { useSalesFilters } from '../hooks/useSalesFilters';
 import { useSalesDialogs } from '../hooks/useSalesDialogs';
 
-// Composants modulaires  
-import SalesTab from './sales/SalesTab';
-import InvoicesTab from './sales/InvoicesTab';
-import QuotesTab from './sales/QuotesTab';
-import SaleDialogManager from './sales/SaleDialogManager';  
+// Composants modulaires
+import { 
+  SalesTab, 
+  InvoicesTab, 
+  QuotesTab, 
+  SalesDialogs 
+} from './sales/index';
 
 // Services et utilitaires
 import PermissionGuard from './PermissionGuard';
@@ -228,7 +230,6 @@ const Sales: React.FC = () => {
                 onAdd={() => salesDialogs.openSaleDialog('add')}
                 onEdit={(sale) => salesDialogs.openSaleDialog('edit', sale)}
                 onDelete={(sale) => salesDialogs.openDeleteDialog('sale', sale)}
-                onOpenScanner={() => setSnackbar({ open: true, message: 'QR Scanner à implémenter', severity: 'info' })}
               />
             )}
 
@@ -272,7 +273,7 @@ const Sales: React.FC = () => {
         </Paper>
 
         {/* Dialog Manager */}
-        <SaleDialogManager
+        <SalesDialogs
           dialogs={salesDialogs}
           data={salesData}
           onSuccess={handleSuccess}

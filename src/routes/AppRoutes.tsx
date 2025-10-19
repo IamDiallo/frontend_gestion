@@ -16,6 +16,7 @@ const Treasury = lazyLoad(() => import('../components/Treasury'));
 const Production = lazyLoad(() => import('../components/Production'));
 const UserManagement = lazyLoad(() => import('../components/UserManagement'));
 const Settings = lazyLoad(() => import('../components/Settings'));
+const Profile = lazyLoad(() => import('../components/Profile'));
 
 const AppRoutes = () => {
   return (
@@ -55,6 +56,9 @@ const AppRoutes = () => {
           
           {/* Settings */}
           <Route path="/settings" element={<Settings />} />
+          
+          {/* Profile */}
+          <Route path="/profile" element={<Profile />} />
           
           {/* Default route - redirect to dashboard */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
