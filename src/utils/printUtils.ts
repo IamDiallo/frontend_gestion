@@ -94,7 +94,7 @@ const toNumber = (value: number | string | null | undefined): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const formatCurrency = (value: number | string | null | undefined, locale = 'fr-FR', currency = 'EUR') => {
+const formatCurrency = (value: number | string | null | undefined, locale = 'fr-FR', currency = 'XOF') => {
   const n = toNumber(value);
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(n);
 };

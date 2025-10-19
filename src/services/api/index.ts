@@ -114,6 +114,7 @@ export type {
 // Dashboard types
 export interface DashboardStats {
   total_sales: number;
+  total_revenue: number;
   total_clients: number;
   total_products: number;
   total_suppliers: number;

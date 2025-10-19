@@ -4,8 +4,9 @@
  */
 
 import React from 'react';
-import { Box, Grid } from '@mui/material';
-import { StandardTextField, StandardSelect, StandardButton } from '../common';
+import { Box, Grid, TextField, InputAdornment, IconButton } from '@mui/material';
+import { Clear as ClearIcon, Search as SearchIcon } from '@mui/icons-material';
+import { StandardSelect } from '../common';
 import { Zone } from '../../interfaces/business';
 import { Supplier } from '../../interfaces/business';
 
@@ -36,7 +37,6 @@ export interface InventoryFiltersProps {
   onSupplierChange?: (value: number | '') => void;
   onFromZoneChange?: (value: number | '') => void;
   onToZoneChange?: (value: number | '') => void;
-  onReset?: () => void;
   
   // Visibility flags
   showSearch?: boolean;
@@ -75,7 +75,6 @@ export const InventoryFilters: React.FC<InventoryFiltersProps> = ({
   onSupplierChange,
   onFromZoneChange,
   onToZoneChange,
-  onReset,
   
   // Visibility
   showSearch = true,
@@ -90,21 +89,6 @@ export const InventoryFilters: React.FC<InventoryFiltersProps> = ({
 }) => {
   
   // ============================================================================
-  // HELPERS
-  // ============================================================================
-  
-  /**
-   * Check if any filters are active
-   */
-  const hasActiveFilters = 
-    searchTerm || 
-    statusFilter || 
-    zoneFilter || 
-    supplierFilter || 
-    fromZoneFilter || 
-    toZoneFilter;
-  
-  // ============================================================================
   // RENDER
   // ============================================================================
   
@@ -114,12 +98,32 @@ export const InventoryFilters: React.FC<InventoryFiltersProps> = ({
         {/* Search Field */}
         {showSearch && onSearchChange && (
           <Grid item xs={12} sm={6} md={3}>
-            <StandardTextField
+            <TextField
               label="Rechercher"
               value={searchTerm}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={searchPlaceholder}
+              variant="outlined"
+              size="small"
               fullWidth
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+                endAdornment: searchTerm && (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      onClick={() => onSearchChange('')}
+                      edge="end"
+                    >
+                      <ClearIcon />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
             />
           </Grid>
         )}
@@ -221,20 +225,6 @@ export const InventoryFilters: React.FC<InventoryFiltersProps> = ({
         
         {/* Spacer */}
         <Grid item xs />
-        
-        {/* Reset Button */}
-        {onReset && (
-          <Grid item xs={12} sm="auto">
-            <StandardButton
-              variant="outlined"
-              onClick={onReset}
-              disabled={!hasActiveFilters}
-              fullWidth
-            >
-              Réinitialiser
-            </StandardButton>
-          </Grid>
-        )}
       </Grid>
     </Box>
   );

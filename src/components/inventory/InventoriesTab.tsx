@@ -4,15 +4,15 @@
  */
 
 import React from 'react';
-import { Box, Tooltip, Typography, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { Box, Tooltip, Typography, FormControl, InputLabel, Select, MenuItem, TextField, InputAdornment, IconButton } from '@mui/material';
 import { GridColDef, GridActionsCellItem } from '@mui/x-data-grid';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
+import { Clear as ClearIcon, Search as SearchIcon } from '@mui/icons-material';
 import {
   StandardDataGrid,
   StandardButton,
-  StandardTextField,
   StatusChip,
   DeleteDialog
 } from '../common';
@@ -39,7 +39,6 @@ export interface InventoriesTabProps {
   onSearchChange: (value: string) => void;
   onStatusFilterChange: (value: string) => void;
   onZoneFilterChange: (value: number | '') => void;
-  onResetFilters: () => void;
   
   // CRUD Actions
   onAdd: () => void;
@@ -61,7 +60,6 @@ export const InventoriesTab: React.FC<InventoriesTabProps> = ({
   onSearchChange,
   onStatusFilterChange,
   onZoneFilterChange,
-  onResetFilters,
   onAdd,
   onEdit,
   onDelete,
@@ -207,11 +205,6 @@ export const InventoriesTab: React.FC<InventoriesTabProps> = ({
     setInventoryToDelete(null);
   };
   
-  /**
-   * Check if filters are active
-   */
-  const hasActiveFilters = searchTerm || statusFilter || zoneFilter;
-  
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -220,17 +213,35 @@ export const InventoriesTab: React.FC<InventoriesTabProps> = ({
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Filters */}
       <Box sx={{ mb: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto' }}>
-          <StandardTextField
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto', minHeight: 56 }}>
+          <TextField
             label="Rechercher"
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Référence, emplacement..."
+            variant="outlined"
             size="small"
-            sx={{ minWidth: 250 }}
+            sx={{ minWidth: 300 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+              endAdornment: searchTerm && (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => onSearchChange('')}
+                    edge="end"
+                  >
+                    <ClearIcon />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
           />
           
-          <FormControl variant="outlined" size="small" sx={{ minWidth: 150 }}>
+          <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
             <InputLabel>Statut</InputLabel>
             <Select
               value={statusFilter}
@@ -245,7 +256,7 @@ export const InventoriesTab: React.FC<InventoriesTabProps> = ({
             </Select>
           </FormControl>
           
-          <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
+          <FormControl variant="outlined" size="small" sx={{ minWidth: 220 }}>
             <InputLabel>Emplacement</InputLabel>
             <Select
               value={zoneFilter}
@@ -260,16 +271,6 @@ export const InventoriesTab: React.FC<InventoriesTabProps> = ({
           </FormControl>
           
           <Box sx={{ flex: 1, minWidth: 20 }} />
-          
-          <StandardButton
-            variant="outlined"
-            size="small"
-            onClick={onResetFilters}
-            disabled={!hasActiveFilters}
-            sx={{ whiteSpace: 'nowrap' }}
-          >
-            Réinitialiser
-          </StandardButton>
           
           <StandardButton
             variant="contained"

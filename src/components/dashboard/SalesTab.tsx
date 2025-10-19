@@ -24,9 +24,10 @@ import type { ReportData } from '../../services/api/index';
 
 interface SalesTabProps {
   reportData: ReportData;
+  totalRevenue?: number;
 }
 
-const SalesTab: React.FC<SalesTabProps> = ({ reportData }) => {
+const SalesTab: React.FC<SalesTabProps> = ({ reportData, totalRevenue }) => {
   // Columns for top products table
   const topProductsColumns: GridColDef[] = [
     { field: 'name', headerName: 'Produit', flex: 1 },
@@ -45,9 +46,16 @@ const SalesTab: React.FC<SalesTabProps> = ({ reportData }) => {
       {/* Monthly Revenue Chart */}
       <Grid item xs={12} lg={8}>
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Évolution du chiffre d'affaires
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">
+              Évolution du chiffre d'affaires
+            </Typography>
+            {totalRevenue !== undefined && (
+              <Typography variant="h5" color="primary" sx={{ fontWeight: 'bold' }}>
+                {formatCurrency(totalRevenue)}
+              </Typography>
+            )}
+          </Box>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={reportData.monthly_data}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -57,7 +65,7 @@ const SalesTab: React.FC<SalesTabProps> = ({ reportData }) => {
               <Legend />
               <Line
                 type="monotone"
-                dataKey="revenue"
+                dataKey="amount"
                 stroke={CHART_COLORS[0]}
                 name="Chiffre d'affaires"
                 strokeWidth={2}
@@ -80,10 +88,10 @@ const SalesTab: React.FC<SalesTabProps> = ({ reportData }) => {
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={(entry) => entry.name}
+                label={(entry) => entry.category}
                 outerRadius={80}
                 fill="#8884d8"
-                dataKey="value"
+                dataKey="amount"
               >
                 {reportData.category_data.map((_entry, index) => (
                   <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />

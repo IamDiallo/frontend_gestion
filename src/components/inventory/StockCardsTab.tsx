@@ -4,12 +4,11 @@
  */
 
 import React from 'react';
-import { Box, Typography, Tooltip, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { Box, Typography, Tooltip, FormControl, InputLabel, Select, MenuItem, TextField, InputAdornment, IconButton } from '@mui/material';
 import { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
+import { Clear as ClearIcon, Search as SearchIcon } from '@mui/icons-material';
 import {
   StandardDataGrid,
-  StandardButton,
-  StandardTextField,
   StatusChip
 } from '../common';
 import { StockMovement } from '../../interfaces/inventory';
@@ -35,7 +34,6 @@ export interface StockCardsTabProps {
   onSearchChange: (value: string) => void;
   onZoneFilterChange: (value: number | '') => void;
   onTypeFilterChange: (value: string) => void;
-  onResetFilters: () => void;
 }
 
 // ============================================================================
@@ -52,7 +50,6 @@ export const StockCardsTab: React.FC<StockCardsTabProps> = ({
   onSearchChange,
   onZoneFilterChange,
   onTypeFilterChange,
-  onResetFilters,
 }) => {
   
   // ============================================================================
@@ -331,35 +328,6 @@ export const StockCardsTab: React.FC<StockCardsTabProps> = ({
   ];
   
   // ============================================================================
-  // HANDLERS
-  // ============================================================================
-  
-  /**
-   * Export stock cards data to JSON
-   */
-  const handleExport = () => {
-    const dataToExport = stockCards.map(card => ({
-      Date: formatDate(card.date),
-      Produit: card.product_name,
-      Emplacement: card.zone_name,
-      Type: card.transaction_type,
-      Référence: card.reference || '',
-      Détails: card.notes || '',
-      Entrée: card.quantity_in || 0,
-      Sortie: card.quantity_out || 0,
-    }));
-    
-    const dataStr = JSON.stringify(dataToExport, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `stock_cards_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-  
-  // ============================================================================
   // RENDER
   // ============================================================================
   
@@ -367,17 +335,35 @@ export const StockCardsTab: React.FC<StockCardsTabProps> = ({
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Filters */}
       <Box sx={{ mb: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto' }}>
-          <StandardTextField
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto', minHeight: 56 }}>
+          <TextField
             label="Rechercher"
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Produit, référence, notes..."
+            variant="outlined"
             size="small"
-            sx={{ minWidth: 250 }}
+            sx={{ minWidth: 300 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+              endAdornment: searchTerm && (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => onSearchChange('')}
+                    edge="end"
+                  >
+                    <ClearIcon />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
           />
           
-          <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
+          <FormControl variant="outlined" size="small" sx={{ minWidth: 220 }}>
             <InputLabel>Emplacement</InputLabel>
             <Select
               value={zoneFilter}
@@ -393,7 +379,7 @@ export const StockCardsTab: React.FC<StockCardsTabProps> = ({
             </Select>
           </FormControl>
           
-          <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
+          <FormControl variant="outlined" size="small" sx={{ minWidth: 240 }}>
             <InputLabel>Type</InputLabel>
             <Select
               value={typeFilter}
@@ -412,24 +398,6 @@ export const StockCardsTab: React.FC<StockCardsTabProps> = ({
           </FormControl>
           
           <Box sx={{ flex: 1 }} />
-          
-          <StandardButton
-            variant="outlined"
-            size="small"
-            onClick={onResetFilters}
-            disabled={!searchTerm && !zoneFilter && !typeFilter}
-          >
-            Réinitialiser
-          </StandardButton>
-          
-          <StandardButton
-            variant="contained"
-            size="small"
-            onClick={handleExport}
-            disabled={stockCards.length === 0}
-          >
-            Exporter
-          </StandardButton>
         </Box>
       </Box>
       

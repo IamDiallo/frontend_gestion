@@ -4,16 +4,16 @@
  */
 
 import React from 'react';
-import { Box, Tooltip, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { Box, Tooltip, FormControl, InputLabel, Select, MenuItem, TextField, InputAdornment, IconButton } from '@mui/material';
 import { GridColDef, GridActionsCellItem } from '@mui/x-data-grid';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import PrintIcon from '@mui/icons-material/Print';
+import { Clear as ClearIcon, Search as SearchIcon } from '@mui/icons-material';
 import {
   StandardDataGrid,
   StandardButton,
-  StandardTextField,
   StatusChip,
   DeleteDialog
 } from '../common';
@@ -44,7 +44,6 @@ export interface SuppliesTabProps {
   onStatusFilterChange: (value: string) => void;
   onZoneFilterChange: (value: number | '') => void;
   onSupplierFilterChange: (value: number | '') => void;
-  onResetFilters: () => void;
   
   // CRUD Actions
   onAdd: () => void;
@@ -69,7 +68,6 @@ export const SuppliesTab: React.FC<SuppliesTabProps> = ({
   onStatusFilterChange,
   onZoneFilterChange,
   onSupplierFilterChange,
-  onResetFilters,
   onAdd,
   onEdit,
   onDelete,
@@ -216,17 +214,12 @@ export const SuppliesTab: React.FC<SuppliesTabProps> = ({
   };
   
   /**
-   * Cancel deletion
+   * Handle delete cancel
    */
   const handleDeleteCancel = () => {
     setDeleteDialogOpen(false);
     setSupplyToDelete(null);
   };
-  
-  /**
-   * Check if filters are active
-   */
-  const hasActiveFilters = searchTerm || statusFilter || zoneFilter || supplierFilter;
   
   // ============================================================================
   // RENDER
@@ -236,17 +229,35 @@ export const SuppliesTab: React.FC<SuppliesTabProps> = ({
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Filters */}
       <Box sx={{ mb: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto' }}>
-          <StandardTextField
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto', minHeight: 56 }}>
+          <TextField
             label="Rechercher"
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Référence, fournisseur..."
+            variant="outlined"
             size="small"
-            sx={{ minWidth: 250 }}
+            sx={{ minWidth: 300 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" color="action" />
+                </InputAdornment>
+              ),
+              endAdornment: searchTerm && (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => onSearchChange('')}
+                    edge="end"
+                  >
+                    <ClearIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
           />
           
-          <FormControl variant="outlined" size="small" sx={{ minWidth: 150 }}>
+          <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
             <InputLabel>Statut</InputLabel>
             <Select
               value={statusFilter}
@@ -261,7 +272,7 @@ export const SuppliesTab: React.FC<SuppliesTabProps> = ({
             </Select>
           </FormControl>
           
-          <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
+          <FormControl variant="outlined" size="small" sx={{ minWidth: 220 }}>
             <InputLabel>Emplacement</InputLabel>
             <Select
               value={zoneFilter}
@@ -275,7 +286,7 @@ export const SuppliesTab: React.FC<SuppliesTabProps> = ({
             </Select>
           </FormControl>
           
-          <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
+          <FormControl variant="outlined" size="small" sx={{ minWidth: 220 }}>
             <InputLabel>Fournisseur</InputLabel>
             <Select
               value={supplierFilter}
@@ -290,16 +301,6 @@ export const SuppliesTab: React.FC<SuppliesTabProps> = ({
           </FormControl>
           
           <Box sx={{ flex: 1, minWidth: 20 }} />
-          
-          <StandardButton
-            variant="outlined"
-            size="small"
-            onClick={onResetFilters}
-            disabled={!hasActiveFilters}
-            sx={{ whiteSpace: 'nowrap' }}
-          >
-            Réinitialiser
-          </StandardButton>
           
           <StandardButton
             variant="contained"

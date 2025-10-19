@@ -215,8 +215,8 @@ export const useInventoryData = (): UseInventoryDataReturn => {
       const preparedData = prepareSupplyData(formData);
       const newSupply = await InventoryAPI.createStockSupply(preparedData);
       
-      // Refresh supplies and stocks
-      await Promise.all([fetchSupplies(), fetchStocks()]);
+      // Refresh supplies, stocks, and stock cards
+      await Promise.all([fetchSupplies(), fetchStocks(), fetchStockCards()]);
       
       return newSupply;
     } catch (err) {
@@ -224,15 +224,15 @@ export const useInventoryData = (): UseInventoryDataReturn => {
       setError('Erreur lors de la création de l\'approvisionnement');
       throw err;
     }
-  }, [fetchSupplies, fetchStocks]);
+  }, [fetchSupplies, fetchStocks, fetchStockCards]);
 
   const updateSupply = useCallback(async (id: number, formData: SupplyFormData): Promise<StockSupply> => {
     try {
       const preparedData = prepareSupplyData(formData);
       const updatedSupply = await InventoryAPI.updateStockSupply(id, preparedData);
       
-      // Refresh supplies and stocks
-      await Promise.all([fetchSupplies(), fetchStocks()]);
+      // Refresh supplies, stocks, and stock cards
+      await Promise.all([fetchSupplies(), fetchStocks(), fetchStockCards()]);
       
       return updatedSupply;
     } catch (err) {
@@ -240,7 +240,7 @@ export const useInventoryData = (): UseInventoryDataReturn => {
       setError('Erreur lors de la modification de l\'approvisionnement');
       throw err;
     }
-  }, [fetchSupplies, fetchStocks]);
+  }, [fetchSupplies, fetchStocks, fetchStockCards]);
 
   const deleteSupply = useCallback(async (id: number): Promise<void> => {
     try {
@@ -248,14 +248,14 @@ export const useInventoryData = (): UseInventoryDataReturn => {
       console.warn(`deleteStockSupply API not available yet for id ${id}`);
       // await InventoryAPI.deleteStockSupply(id);
       
-      // Refresh supplies and stocks
-      await Promise.all([fetchSupplies(), fetchStocks()]);
+      // Refresh supplies, stocks, and stock cards
+      await Promise.all([fetchSupplies(), fetchStocks(), fetchStockCards()]);
     } catch (err) {
       console.error('Error deleting supply:', err);
       setError('Erreur lors de la suppression de l\'approvisionnement');
       throw err;
     }
-  }, [fetchSupplies, fetchStocks]);
+  }, [fetchSupplies, fetchStocks, fetchStockCards]);
 
   // ============================================================================
   // TRANSFER OPERATIONS
@@ -266,8 +266,8 @@ export const useInventoryData = (): UseInventoryDataReturn => {
       const preparedData = prepareTransferData(formData);
       const newTransfer = await InventoryAPI.createStockTransfer(preparedData);
       
-      // Refresh transfers and stocks
-      await Promise.all([fetchTransfers(), fetchStocks()]);
+      // Refresh transfers, stocks, and stock cards
+      await Promise.all([fetchTransfers(), fetchStocks(), fetchStockCards()]);
       
       return newTransfer;
     } catch (err) {
@@ -275,15 +275,15 @@ export const useInventoryData = (): UseInventoryDataReturn => {
       setError('Erreur lors de la création du transfert');
       throw err;
     }
-  }, [fetchTransfers, fetchStocks]);
+  }, [fetchTransfers, fetchStocks, fetchStockCards]);
 
   const updateTransfer = useCallback(async (id: number, formData: TransferFormData): Promise<StockTransfer> => {
     try {
       const preparedData = prepareTransferData(formData);
       const updatedTransfer = await InventoryAPI.updateStockTransfer(id, preparedData);
       
-      // Refresh transfers and stocks
-      await Promise.all([fetchTransfers(), fetchStocks()]);
+      // Refresh transfers, stocks, and stock cards
+      await Promise.all([fetchTransfers(), fetchStocks(), fetchStockCards()]);
       
       return updatedTransfer;
     } catch (err) {
@@ -291,7 +291,7 @@ export const useInventoryData = (): UseInventoryDataReturn => {
       setError('Erreur lors de la modification du transfert');
       throw err;
     }
-  }, [fetchTransfers, fetchStocks]);
+  }, [fetchTransfers, fetchStocks, fetchStockCards]);
 
   const deleteTransfer = useCallback(async (id: number): Promise<void> => {
     try {
@@ -299,14 +299,14 @@ export const useInventoryData = (): UseInventoryDataReturn => {
       console.warn(`deleteStockTransfer API not available yet for id ${id}`);
       // await InventoryAPI.deleteStockTransfer(id);
       
-      // Refresh transfers and stocks
-      await Promise.all([fetchTransfers(), fetchStocks()]);
+      // Refresh transfers, stocks, and stock cards
+      await Promise.all([fetchTransfers(), fetchStocks(), fetchStockCards()]);
     } catch (err) {
       console.error('Error deleting transfer:', err);
       setError('Erreur lors de la suppression du transfert');
       throw err;
     }
-  }, [fetchTransfers, fetchStocks]);
+  }, [fetchTransfers, fetchStocks, fetchStockCards]);
 
   // ============================================================================
   // INVENTORY OPERATIONS
@@ -317,8 +317,8 @@ export const useInventoryData = (): UseInventoryDataReturn => {
       const preparedData = prepareInventoryData(formData);
       const newInventory = await InventoryAPI.createInventory(preparedData);
       
-      // Refresh inventories and stocks
-      await Promise.all([fetchInventories(), fetchStocks()]);
+      // Refresh inventories, stocks, and stock cards
+      await Promise.all([fetchInventories(), fetchStocks(), fetchStockCards()]);
       
       return newInventory;
     } catch (err) {
@@ -326,15 +326,15 @@ export const useInventoryData = (): UseInventoryDataReturn => {
       setError('Erreur lors de la création de l\'inventaire');
       throw err;
     }
-  }, [fetchInventories, fetchStocks]);
+  }, [fetchInventories, fetchStocks, fetchStockCards]);
 
   const updateInventory = useCallback(async (id: number, formData: InventoryFormData): Promise<InventoryType> => {
     try {
       const preparedData = prepareInventoryData(formData);
       const updatedInventory = await InventoryAPI.updateInventory(id, preparedData);
       
-      // Refresh inventories and stocks
-      await Promise.all([fetchInventories(), fetchStocks()]);
+      // Refresh inventories, stocks, and stock cards
+      await Promise.all([fetchInventories(), fetchStocks(), fetchStockCards()]);
       
       return updatedInventory;
     } catch (err) {
@@ -342,20 +342,20 @@ export const useInventoryData = (): UseInventoryDataReturn => {
       setError('Erreur lors de la modification de l\'inventaire');
       throw err;
     }
-  }, [fetchInventories, fetchStocks]);
+  }, [fetchInventories, fetchStocks, fetchStockCards]);
 
   const deleteInventory = useCallback(async (id: number): Promise<void> => {
     try {
       await InventoryAPI.deleteInventory(id);
       
-      // Refresh inventories and stocks
-      await Promise.all([fetchInventories(), fetchStocks()]);
+      // Refresh inventories, stocks, and stock cards
+      await Promise.all([fetchInventories(), fetchStocks(), fetchStockCards()]);
     } catch (err) {
       console.error('Error deleting inventory:', err);
       setError('Erreur lors de la suppression de l\'inventaire');
       throw err;
     }
-  }, [fetchInventories, fetchStocks]);
+  }, [fetchInventories, fetchStocks, fetchStockCards]);
 
   // ============================================================================
   // RETURN

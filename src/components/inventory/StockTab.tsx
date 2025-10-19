@@ -1,17 +1,16 @@
 /**
  * StockTab Component
- * Displays current stock levels with filtering and export capabilities
+ * Displays current stock levels with filtering capabilities
  */
 
 import React from 'react';
-import { Box, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { Box, FormControl, InputLabel, Select, MenuItem, InputAdornment, IconButton, TextField } from '@mui/material';
 import { GridColDef } from '@mui/x-data-grid';
 import {
   StandardDataGrid,
-  StandardButton,
-  StandardTextField,
   StatusChip
 } from '../common';
+import { Clear as ClearIcon, Search as SearchIcon } from '@mui/icons-material';
 import { Stock } from '../../interfaces/inventory';
 import { Zone } from '../../interfaces/business';
 import { formatQuantity } from '../../utils/inventoryUtils';
@@ -35,7 +34,6 @@ export interface StockTabProps {
   onSearchChange: (value: string) => void;
   onZoneFilterChange: (value: number | '') => void;
   onStatusFilterChange: (value: string) => void;
-  onResetFilters: () => void;
 }
 
 // ============================================================================
@@ -52,7 +50,6 @@ export const StockTab: React.FC<StockTabProps> = ({
   onSearchChange,
   onZoneFilterChange,
   onStatusFilterChange,
-  onResetFilters,
 }) => {
   
   // ============================================================================
@@ -129,31 +126,6 @@ export const StockTab: React.FC<StockTabProps> = ({
   ];
   
   // ============================================================================
-  // HANDLERS
-  // ============================================================================
-  
-  /**
-   * Export stock data to JSON
-   */
-  const handleExport = () => {
-    const dataToExport = validStocks.map(stock => ({
-      Produit: stock.product_name,
-      Emplacement: stock.zone_name,
-      Quantité: stock.quantity,
-      Unité: stock.unit_symbol,
-    }));
-    
-    const dataStr = JSON.stringify(dataToExport, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `stock_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-  
-  // ============================================================================
   // RENDER
   // ============================================================================
   
@@ -161,17 +133,35 @@ export const StockTab: React.FC<StockTabProps> = ({
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Filters */}
       <Box sx={{ mb: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto' }}>
-          <StandardTextField
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto', minHeight: 56 }}>
+          <TextField
             label="Rechercher"
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Nom ou référence du produit..."
+            variant="outlined"
             size="small"
-            sx={{ minWidth: 250 }}
+            sx={{ minWidth: 300 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" color="action" />
+                </InputAdornment>
+              ),
+              endAdornment: searchTerm && (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => onSearchChange('')}
+                    edge="end"
+                  >
+                    <ClearIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
           />
           
-          <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
+          <FormControl variant="outlined" size="small" sx={{ minWidth: 220 }}>
             <InputLabel>Emplacement</InputLabel>
             <Select
               value={zoneFilter}
@@ -187,7 +177,7 @@ export const StockTab: React.FC<StockTabProps> = ({
             </Select>
           </FormControl>
           
-          <FormControl variant="outlined" size="small" sx={{ minWidth: 150 }}>
+          <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
             <InputLabel>État</InputLabel>
             <Select
               value={statusFilter}
@@ -200,26 +190,6 @@ export const StockTab: React.FC<StockTabProps> = ({
               <MenuItem value="rupture">Rupture</MenuItem>
             </Select>
           </FormControl>
-          
-          <Box sx={{ flex: 1 }} />
-          
-          <StandardButton
-            variant="outlined"
-            size="small"
-            onClick={onResetFilters}
-            disabled={!searchTerm && !zoneFilter && !statusFilter}
-          >
-            Réinitialiser
-          </StandardButton>
-          
-          <StandardButton
-            variant="contained"
-            size="small"
-            onClick={handleExport}
-            disabled={validStocks.length === 0}
-          >
-            Exporter
-          </StandardButton>
         </Box>
       </Box>
       

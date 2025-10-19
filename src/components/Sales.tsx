@@ -34,6 +34,8 @@ import SaleDialogManager from './sales/SaleDialogManager';
 
 // Services et utilitaires
 import PermissionGuard from './PermissionGuard';
+import { printFacture, printDevis } from '../utils/printUtils';
+import type { Facture, Devis } from '../utils/printUtils';
 
 const Sales: React.FC = () => {
   const theme = useTheme();
@@ -93,6 +95,66 @@ const Sales: React.FC = () => {
 
   const handleCloseSnackbar = () => {
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  // Print handlers
+  const handlePrintInvoice = (invoice: any) => {
+    try {
+      // Find client name
+      const client = salesData.clients.find(c => c.id === invoice.client);
+      
+      // Map invoice data to print format
+      const printData: Facture = {
+        id: invoice.id,
+        reference: invoice.reference,
+        date: invoice.date,
+        due_date: invoice.due_date,
+        client_name: client?.name || 'N/A',
+        client_phone: client?.phone,
+        client_email: client?.email,
+        sale_reference: invoice.sale_reference,
+        amount: invoice.amount,
+        paid_amount: invoice.paid_amount,
+        balance: invoice.balance,
+        status: invoice.status,
+        notes: invoice.notes,
+        items: invoice.items || []
+      };
+      
+      printFacture(printData);
+      handleSuccess('Impression de la facture en cours...');
+    } catch (error) {
+      console.error('Error printing invoice:', error);
+      handleError('Erreur lors de l\'impression de la facture');
+    }
+  };
+
+  const handlePrintQuote = (quote: any) => {
+    try {
+      // Find client name
+      const client = salesData.clients.find(c => c.id === quote.client);
+      
+      // Map quote data to print format
+      const printData: Devis = {
+        id: quote.id,
+        reference: quote.reference,
+        date: quote.date,
+        expiry_date: quote.expiry_date,
+        client_name: client?.name || 'N/A',
+        client_phone: client?.phone,
+        client_email: client?.email,
+        total_amount: quote.total_amount,
+        status: quote.status,
+        notes: quote.notes,
+        items: quote.items || []
+      };
+      
+      printDevis(printData);
+      handleSuccess('Impression du devis en cours...');
+    } catch (error) {
+      console.error('Error printing quote:', error);
+      handleError('Erreur lors de l\'impression du devis');
+    }
   };
 
   // =============================================================================
@@ -184,7 +246,7 @@ const Sales: React.FC = () => {
                 onAdd={() => salesDialogs.openInvoiceDialog('add')}
                 onEdit={(invoice) => salesDialogs.openInvoiceDialog('edit', invoice)}
                 onDelete={(invoice) => salesDialogs.openDeleteDialog('invoice', invoice)}
-                onPrint={() => setSnackbar({ open: true, message: 'Impression à implémenter', severity: 'info' })}
+                onPrint={handlePrintInvoice}
               />
             )}
 
@@ -202,7 +264,7 @@ const Sales: React.FC = () => {
                 onAdd={() => salesDialogs.openQuoteDialog('add')}
                 onEdit={(quote) => salesDialogs.openQuoteDialog('edit', quote)}
                 onDelete={(quote) => salesDialogs.openDeleteDialog('quote', quote)}
-                onPrint={() => setSnackbar({ open: true, message: 'Impression à implémenter', severity: 'info' })}
+                onPrint={handlePrintQuote}
                 onConvert={(quote) => salesDialogs.openQuoteConversionDialog(quote)}
               />
             )}

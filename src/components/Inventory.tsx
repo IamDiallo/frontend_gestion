@@ -81,7 +81,6 @@ const Inventory: React.FC = () => {
                 loading={inventoryData.loading}
                 zones={inventoryData.zones}
                 {...inventoryFilters.stockFilters}
-                onResetFilters={inventoryFilters.resetStockFilters} 
               />
             )}
             
@@ -91,8 +90,7 @@ const Inventory: React.FC = () => {
                 loading={inventoryData.loading}
                 zones={inventoryData.zones}
                 suppliers={inventoryData.suppliers}
-                {...inventoryFilters.supplyFilters} 
-                onResetFilters={inventoryFilters.resetSupplyFilters} 
+                {...inventoryFilters.supplyFilters}
                 onAdd={() => inventoryDialog.openDialog('supply')} 
                 onEdit={(s) => inventoryDialog.openDialog('supply', s)} 
                 onDelete={(id) => inventoryData.deleteSupply(id)} 
@@ -104,8 +102,7 @@ const Inventory: React.FC = () => {
                 transfers={inventoryFilters.filteredTransfers} 
                 loading={inventoryData.loading}
                 zones={inventoryData.zones}
-                {...inventoryFilters.transferFilters} 
-                onResetFilters={inventoryFilters.resetTransferFilters} 
+                {...inventoryFilters.transferFilters}
                 onAdd={() => inventoryDialog.openDialog('transfer')} 
                 onEdit={(t) => inventoryDialog.openDialog('transfer', t)} 
                 onDelete={(id) => inventoryData.deleteTransfer(id)} 
@@ -117,8 +114,7 @@ const Inventory: React.FC = () => {
                 inventories={inventoryFilters.filteredInventories} 
                 loading={inventoryData.loading}
                 zones={inventoryData.zones}
-                {...inventoryFilters.inventoryFilters} 
-                onResetFilters={inventoryFilters.resetInventoryFilters} 
+                {...inventoryFilters.inventoryFilters}
                 onAdd={() => inventoryDialog.openDialog('inventory')} 
                 onEdit={(i) => inventoryDialog.openDialog('inventory', i)} 
                 onDelete={(id) => inventoryData.deleteInventory(id)} 
@@ -130,8 +126,7 @@ const Inventory: React.FC = () => {
                 stockCards={inventoryFilters.filteredStockCards} 
                 loading={inventoryData.loading}
                 zones={inventoryData.zones}
-                {...inventoryFilters.stockCardFilters} 
-                onResetFilters={inventoryFilters.resetStockCardFilters} 
+                {...inventoryFilters.stockCardFilters}
               />
             )}
           </Box>

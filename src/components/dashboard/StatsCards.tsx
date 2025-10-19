@@ -24,7 +24,7 @@ const StatsCards: React.FC<StatsCardsProps> = ({ stats }) => {
     <>
       <Grid item xs={12} sm={6} md={3}>
         <StatsCard
-          title="Total ventes"
+          title="Nombre de ventes"
           value={stats.total_sales.toString()}
           icon={<Assessment />}
           color="primary"
@@ -35,7 +35,7 @@ const StatsCards: React.FC<StatsCardsProps> = ({ stats }) => {
           title="Total clients"
           value={stats.total_clients.toString()}
           icon={<People />}
-          color="success"
+          color="secondary"
         />
       </Grid>
       <Grid item xs={12} sm={6} md={3}>

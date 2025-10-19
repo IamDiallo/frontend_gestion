@@ -209,7 +209,7 @@ const Dashboard: React.FC = () => {
 
           <Box sx={{ p: 3 }}>
             {/* Sales Tab */}
-            {selectedTab === 0 && <SalesTab reportData={reportData} />}
+            {selectedTab === 0 && <SalesTab reportData={reportData} totalRevenue={dashboardStats?.total_revenue} />}
 
             {/* Products Tab */}
             {selectedTab === 1 && (
