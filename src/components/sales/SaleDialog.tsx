@@ -190,7 +190,7 @@ const SaleDialog: React.FC<SaleDialogProps> = ({
         setLoadedSale(null);
         updateSaleDialog({
           selectedClient: null,
-          selectedZone: 1,
+          selectedZone: null,
           selectedProducts: [],
           currentProduct: null,
           currentQuantity: 1
@@ -282,6 +282,9 @@ const SaleDialog: React.FC<SaleDialogProps> = ({
       const subtotal = Number(calculateTotal().toFixed(2));
       const tax_amount = Number((subtotal * 0.00).toFixed(2));
       const total_amount = Number((subtotal + tax_amount).toFixed(2));
+      const remaining_amount = total_amount;
+      const paid_amount = 0;
+
 
       const saleData = {
         client: selectedClient.id!,
@@ -291,6 +294,8 @@ const SaleDialog: React.FC<SaleDialogProps> = ({
         subtotal,
         tax_amount,
         total_amount,
+        remaining_amount,
+        paid_amount,
         items: selectedProducts.map(item => ({
           product: item.product.id!,
           quantity: item.quantity,
@@ -463,9 +468,10 @@ const SaleDialog: React.FC<SaleDialogProps> = ({
                   <InputLabel>Zone</InputLabel>
                   <Select
                     value={selectedZone}
-                    onChange={(e) => updateSaleDialog({ selectedZone: Number(e.target.value) })}
+                    onChange={(e) => updateSaleDialog({ selectedZone: e.target.value as number | null }) }
                     label="Zone"
                   >
+                    <MenuItem value="">Sélectionner une zone</MenuItem>
                     {(zones || []).map((zone) => (
                       <MenuItem key={zone.id} value={zone.id}>{zone.name}</MenuItem>
                     ))}

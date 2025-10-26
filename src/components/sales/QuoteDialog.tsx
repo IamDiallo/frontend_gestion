@@ -62,7 +62,6 @@ const QuoteDialog: React.FC<QuoteDialogProps> = ({
   quote,
   quoteDialog,
   clients,
-  zones,
   products,
   onClose,
   updateQuoteDialog,

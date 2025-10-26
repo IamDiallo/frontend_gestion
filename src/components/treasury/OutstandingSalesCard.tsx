@@ -112,6 +112,7 @@ export const OutstandingSalesCard: React.FC<OutstandingSalesCardProps> = ({
       field: 'payment_status',
       headerName: 'Statut',
       width: 130,
+      valueGetter: (value, row) => (row as OutstandingSale).status,
       renderCell: (params: GridRenderCellParams) => (
         <Chip
           label={getPaymentStatusLabel(params.value)}
@@ -130,7 +131,7 @@ export const OutstandingSalesCard: React.FC<OutstandingSalesCardProps> = ({
       headerAlign: 'center',
       renderCell: (params: GridRenderCellParams) => {
         const sale = params.row as OutstandingSale;
-        const isPaid = sale.payment_status === 'paid';
+        const isPaid = sale.status === 'paid';
         
         return (
           <Button
@@ -156,7 +157,7 @@ export const OutstandingSalesCard: React.FC<OutstandingSalesCardProps> = ({
 
   // Backend returns remaining_amount, but interface has balance for backwards compatibility
   const totalRemaining = sales.reduce((sum, sale) => sum + (sale.remaining_amount || sale.balance || 0), 0);
-  const unpaidCount = sales.filter(s => s.payment_status !== 'paid').length;
+  const unpaidCount = sales.filter(s => s.status !== 'paid').length;
 
   return (
     <Card elevation={2} sx={{ mb: 3, borderRadius: 2 }}>

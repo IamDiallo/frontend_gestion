@@ -46,7 +46,7 @@ export interface OutstandingSale {
   paid_amount: number;
   balance: number;
   remaining_amount: number;
-  payment_status: string;
+  status: string;
 }
 
 // Define Invoice types

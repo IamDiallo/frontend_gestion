@@ -124,17 +124,18 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
     onChange({ amount: newAmount.toString() });
   };
 
+  // console.log('💰 PaymentDialog Render:', { data, amount });
   // Backend returns remaining_amount for outstanding_sales
-  const saleBalance = data.sale_balance || data.sale?.remaining_amount || data.sale?.balance || 0;
+  const saleBalance = data.sale?.remaining_amount || 0;
   const saleTotal = data.sale_total || data.sale?.total_amount || 0;
-  const isPaid = data.sale && saleBalance === 0;
+  const isPaid = data.sale?.status === 'paid' || saleBalance === 0;
   const isPartialPayment = amount > 0 && amount < saleBalance;
   const isOverpayment = amount > 0 && amount > saleBalance;
 
   // Debug logs
   console.log('💰 Payment Dialog Data:', {
     sale: data.sale,
-    sale_balance: data.sale_balance,
+    sale_balance: data.sale?.remaining_amount,
     sale_total: data.sale_total,
     saleBalance,
     saleTotal,

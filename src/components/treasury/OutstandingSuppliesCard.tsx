@@ -111,6 +111,7 @@ export const OutstandingSuppliesCard: React.FC<OutstandingSuppliesCardProps> = (
       field: 'payment_status',
       headerName: 'Statut',
       width: 130,
+      valueGetter: (value, row) => (row as OutstandingSupply).status,
       renderCell: (params: GridRenderCellParams) => (
         <Chip
           label={getPaymentStatusLabel(params.value)}

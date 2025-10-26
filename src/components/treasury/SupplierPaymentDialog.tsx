@@ -127,10 +127,11 @@ export const SupplierPaymentDialog: React.FC<SupplierPaymentDialogProps> = ({
     setAmount(newAmount);
     onChange({ amount: newAmount.toString() });
   };
-
+  console.log('💰 Supplier Payment Dialog Render:', { data, amount });
   const supplyBalance = data.supply_balance || data.supply?.remaining_amount || 0;
   const supplyTotal = data.supply_total || data.supply?.total_amount || 0;
   const isPaid = data.supply && supplyBalance === 0;
+  const isPartialPayment = amount > 0 && amount < supplyBalance;
   const isOverpayment = amount > 0 && amount > supplyBalance;
   const accountBalance = selectedAccount ? parseBalance(selectedAccount.current_balance) : 0;
   const insufficientFunds = selectedAccount && accountBalance < amount;
@@ -338,6 +339,55 @@ export const SupplierPaymentDialog: React.FC<SupplierPaymentDialogProps> = ({
                     ),
                   }}
                 />
+                
+                {/* Payment Type Summary */}
+                {amount > 0 && !isOverpayment && (
+                  <Box sx={{ mt: 2 }}>
+                    <Paper 
+                      variant="outlined" 
+                      sx={{ 
+                        p: 2,
+                        borderRadius: 1,
+                        borderColor: isPartialPayment ? 'info.main' : 'success.main',
+                        borderWidth: 2,
+                        backgroundColor: isPartialPayment 
+                          ? 'rgba(3, 169, 244, 0.08)'
+                          : 'rgba(46, 125, 50, 0.08)',
+                        boxShadow: 1
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
+                        <Box sx={{ mr: 2, mt: 0.5 }}>
+                          <PaymentIcon 
+                            fontSize="large" 
+                            color={isPartialPayment ? "info" : "success"} 
+                          />
+                        </Box>
+                        
+                        <Box sx={{ flexGrow: 1 }}>
+                          <Typography variant="h6" gutterBottom fontWeight="bold">
+                            {isPartialPayment ? "Paiement partiel" : "Paiement total"}
+                          </Typography>
+                          
+                          <Typography variant="body2">
+                            {isPartialPayment ? (
+                              <>
+                                Vous effectuez un paiement partiel de {formatCurrency(amount)}. 
+                                Un montant de {formatCurrency(supplyBalance - amount)} restera à payer.
+                                Le statut de l'approvisionnement sera mis à jour en "Partiellement payé".
+                              </>
+                            ) : (
+                              <>
+                                Vous effectuez le paiement total de cet approvisionnement d'un montant de {formatCurrency(amount)}.
+                                Le statut de l'approvisionnement sera mis à jour en "Payé".
+                              </>
+                            )}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Paper>
+                  </Box>
+                )}
               </Grid>
 
               {/* Description */}
@@ -355,8 +405,6 @@ export const SupplierPaymentDialog: React.FC<SupplierPaymentDialogProps> = ({
             </Grid>
           </Box>
         </DialogContent>
-
-        <Divider />
         
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button 
@@ -385,7 +433,11 @@ export const SupplierPaymentDialog: React.FC<SupplierPaymentDialogProps> = ({
               px: 3
             }}
           >
-            {loading ? 'Traitement...' : 'Effectuer le paiement'}
+            {loading ? 'Traitement...' : (
+              isPaid ? 'Approvisionnement déjà payé' : (
+                isPartialPayment ? 'Effectuer un paiement partiel' : 'Effectuer le paiement total'
+              )
+            )}
           </Button>
         </DialogActions>
       </form>

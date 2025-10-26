@@ -32,6 +32,7 @@ export const formatDate = (dateString: string): string => {
 export const getPaymentStatusColor = (status: string): 'error' | 'warning' | 'success' | 'default' => {
   switch (status) {
     case 'unpaid':
+    case 'payment_pending':
       return 'error';
     case 'partially_paid':
       return 'warning';
@@ -46,8 +47,12 @@ export const getPaymentStatusColor = (status: string): 'error' | 'warning' | 'su
  * Get label for payment status
  */
 export const getPaymentStatusLabel = (status: string): string => {
+  console.log("Getting label for status:", status);
   switch (status) {
     case 'unpaid':
+    case 'received':
+      return 'Non payé';
+    case 'payment_pending':
       return 'Non payé';
     case 'partially_paid':
       return 'Partiellement payé';
@@ -76,6 +81,7 @@ export const getTransactionTypeColor = (type: string): 'success' | 'error' | 'de
     case 'transfer_out':
     case 'expense':
     case 'purchase':
+    case 'received':
       return 'error';
     default:
       return 'default';

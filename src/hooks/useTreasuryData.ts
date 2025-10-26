@@ -349,7 +349,7 @@ export const useTreasuryData = (): UseTreasuryDataReturn => {
     description: string
   ): Promise<void> => {
     try {
-      await api.post(`/stock-supplies/${supplyId}/pay_from_account/`, {
+      await api.post(`/inventory/stock-supplies/${supplyId}/pay_from_account/`, {
         amount,
         company_account: accountId,
         description
