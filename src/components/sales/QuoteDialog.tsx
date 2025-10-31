@@ -39,10 +39,12 @@ import type { Client, Zone } from '../../interfaces/sales';
 import type { Product } from '../../interfaces/products';
 import * as SalesAPI from '../../services/api/sales.api';
 
+import type { ApiQuote, QuoteItem } from '../../interfaces/sales';
+
 interface QuoteDialogProps {
   open: boolean;
   mode: 'add' | 'edit' | 'view';
-  quote: any;
+  quote: ApiQuote | null;
   quoteDialog: QuoteDialogState;
   clients: Client[];
   zones: Zone[];
@@ -71,7 +73,12 @@ const QuoteDialog: React.FC<QuoteDialogProps> = ({
   onError,
   refreshData
 }) => {
-  const [newQuoteData, setNewQuoteData] = useState<any>({ status: 'draft' });
+  const [newQuoteData, setNewQuoteData] = useState<{ 
+    status: 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired' | 'cancelled'; 
+    date?: string; 
+    expiry_date?: string; 
+    notes?: string 
+  }>({ status: 'draft' });
   const [stockError, setStockError] = useState('');
 
   const selectedClient = quoteDialog.selectedClient;
@@ -114,7 +121,7 @@ const QuoteDialog: React.FC<QuoteDialogProps> = ({
             console.log('Quote items found:', quoteDetails.items);
             console.log('All products available:', products?.length);
             
-            const quoteProducts = quoteDetails.items.map((item: any) => {
+            const quoteProducts = quoteDetails.items.map((item: QuoteItem) => {
               // Try to find the full product from products list
               const fullProduct = products?.find((p) => p.id === item.product);
               
@@ -128,7 +135,7 @@ const QuoteDialog: React.FC<QuoteDialogProps> = ({
                 product: fullProduct || {
                   id: item.product,
                   name: item.product_name,
-                  reference: item.product_reference || '',
+                  reference: '',
                   description: '',
                   category: 0,
                   unit: 0,
@@ -250,8 +257,10 @@ const QuoteDialog: React.FC<QuoteDialogProps> = ({
       setStockError('');
     } catch (error: unknown) {
       console.error('Error saving quote:', error);
-      const errorMessage = error && typeof error === 'object' && 'response' in error ?
-        String((error.response as any)?.data?.error) : 'Erreur lors de l\'enregistrement du devis';
+      const errorMessage = error && typeof error === 'object' && 'response' in error &&
+        (error as { response?: { data?: { error?: string } } }).response?.data?.error ?
+        String((error as { response: { data: { error: string } } }).response.data.error) :
+        'Erreur lors de l\'enregistrement du devis';
       onError(errorMessage);
     }
   };
@@ -320,7 +329,7 @@ const QuoteDialog: React.FC<QuoteDialogProps> = ({
               <InputLabel>Statut</InputLabel>
               <Select
                 value={newQuoteData.status || 'draft'}
-                onChange={(e) => setNewQuoteData({ ...newQuoteData, status: e.target.value })}
+                onChange={(e) => setNewQuoteData({ ...newQuoteData, status: e.target.value as 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired' | 'cancelled' })}
                 label="Statut"
               >
                 <MenuItem value="draft">Brouillon</MenuItem>
@@ -471,6 +480,7 @@ const QuoteDialog: React.FC<QuoteDialogProps> = ({
               rows={3}
               fullWidth
               placeholder="Notes additionnelles pour le devis..."
+              value={newQuoteData.notes || ''}
               onChange={(e) => setNewQuoteData({ ...newQuoteData, notes: e.target.value })}
             />
           </Grid>

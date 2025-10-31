@@ -38,6 +38,7 @@ import {
 import PermissionGuard from './PermissionGuard';
 import { printFacture, printDevis } from '../utils/printUtils';
 import type { Facture, Devis } from '../utils/printUtils';
+import type { ExtendedInvoice, ApiQuote } from '../interfaces/sales';
 
 const Sales: React.FC = () => {
   const theme = useTheme();
@@ -100,10 +101,11 @@ const Sales: React.FC = () => {
   };
 
   // Print handlers
-  const handlePrintInvoice = (invoice: any) => {
+  const handlePrintInvoice = (invoice: ExtendedInvoice) => {
     try {
-      // Find client name
-      const client = salesData.clients.find(c => c.id === invoice.client);
+      // Find the sale to get client info
+      const sale = salesData.sales.find(s => s.id === invoice.sale);
+      const client = salesData.clients.find(c => c.id === sale?.client);
       
       // Map invoice data to print format
       const printData: Facture = {
@@ -111,7 +113,7 @@ const Sales: React.FC = () => {
         reference: invoice.reference,
         date: invoice.date,
         due_date: invoice.due_date,
-        client_name: client?.name || 'N/A',
+        client_name: client?.name || invoice.client_name || 'N/A',
         client_phone: client?.phone,
         client_email: client?.email,
         sale_reference: invoice.sale_reference,
@@ -120,7 +122,7 @@ const Sales: React.FC = () => {
         balance: invoice.balance,
         status: invoice.status,
         notes: invoice.notes,
-        items: invoice.items || []
+        items: [] // Invoices don't have items directly, they're linked to sales
       };
       
       printFacture(printData);
@@ -131,7 +133,7 @@ const Sales: React.FC = () => {
     }
   };
 
-  const handlePrintQuote = (quote: any) => {
+  const handlePrintQuote = (quote: ApiQuote) => {
     try {
       // Find client name
       const client = salesData.clients.find(c => c.id === quote.client);

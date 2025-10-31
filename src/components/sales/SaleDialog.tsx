@@ -40,13 +40,13 @@ import { useQRScanner } from '../../hooks/useQRScanner';
 import * as SalesAPI from '../../services/api/sales.api';
 import type { SalesStatus } from '../common/SalesWorkflow';
 import type { SaleDialogState } from '../../hooks/useSalesDialogs';
-import type { Client, Zone } from '../../interfaces/sales';
+import type { Client, Zone, ExtendedSale, SaleItem } from '../../interfaces/sales';
 import type { Product } from '../../interfaces/products';
 
 interface SaleDialogProps {
   open: boolean;
   mode: 'add' | 'edit' | 'view';
-  sale: any;
+  sale: ExtendedSale | null;
   clients: Client[];
   zones: Zone[];
   productsWithStock: Product[];
@@ -84,7 +84,7 @@ const SaleDialog: React.FC<SaleDialogProps> = ({
   const [stockError, setStockError] = useState('');
   
   // Store fetched sale details for edit mode (includes status, payment_status, etc.)
-  const [loadedSale, setLoadedSale] = useState<any>(null);
+  const [loadedSale, setLoadedSale] = useState<ExtendedSale | null>(null);
 
   // Use loaded sale if available (edit mode), otherwise use prop
   const currentSale = loadedSale || sale;
@@ -159,11 +159,11 @@ const SaleDialog: React.FC<SaleDialogProps> = ({
           // Set products from sale items
           if (saleDetails.items && saleDetails.items.length > 0) {
             console.log('Setting products from items:', saleDetails.items);
-            const products = saleDetails.items.map((item: any) => ({
+            const products = saleDetails.items.map((item: SaleItem) => ({
               product: {
                 id: item.product,
                 name: item.product_name || 'N/A',
-                reference: item.product_reference || '',
+                reference: '',
                 description: '',
                 category: 0,
                 unit: 0,
@@ -330,8 +330,10 @@ const SaleDialog: React.FC<SaleDialogProps> = ({
       setStockError('');
     } catch (error: unknown) {
       console.error('Error saving sale:', error);
-      const errorMessage = error && typeof error === 'object' && 'response' in error ? 
-        String((error.response as any)?.data?.error) : 'Erreur lors de l\'enregistrement de la vente';
+      const errorMessage = error && typeof error === 'object' && 'response' in error &&
+        (error as { response?: { data?: { error?: string } } }).response?.data?.error ?
+        String((error as { response: { data: { error: string } } }).response.data.error) :
+        'Erreur lors de l\'enregistrement de la vente';
       onError(errorMessage);
     }
   };
@@ -415,9 +417,9 @@ const SaleDialog: React.FC<SaleDialogProps> = ({
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {currentSale.items.map((item: any, index: number) => (
+                        {currentSale.items?.map((item: SaleItem & { product_name?: string; total?: number }, index: number) => (
                           <TableRow key={index}>
-                            <TableCell>{item.product?.name || item.product_name || 'N/A'}</TableCell>
+                            <TableCell>{item.product_name || 'N/A'}</TableCell>
                             <TableCell align="right">{formatCurrency(item.unit_price)}</TableCell>
                             <TableCell align="right">{item.quantity}</TableCell>
                             <TableCell align="right">{formatCurrency(item.total)}</TableCell>

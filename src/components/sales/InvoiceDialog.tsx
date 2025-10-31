@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import type { AxiosError } from 'axios';
 import {
   Dialog,
   DialogTitle,
@@ -27,10 +28,12 @@ import type { ExtendedSale } from '../../hooks/useSalesData';
 import type { Client } from '../../interfaces/sales';
 import * as SalesAPI from '../../services/api/sales.api';
 
+import type { ExtendedInvoice } from '../../interfaces/sales';
+
 interface InvoiceDialogProps {
   open: boolean;
   mode: 'add' | 'edit' | 'view';
-  invoice: any;
+  invoice: ExtendedInvoice | null;
   invoiceDialog: InvoiceDialogState;
   sales: ExtendedSale[];
   clients: Client[];
@@ -54,7 +57,7 @@ const InvoiceDialog: React.FC<InvoiceDialogProps> = ({
   onError,
   refreshData
 }) => {
-  const [newInvoiceData, setNewInvoiceData] = useState<any>({});
+  const [newInvoiceData, setNewInvoiceData] = useState<Partial<ExtendedInvoice>>({});
   const selectedSale = invoiceDialog.selectedSale;
 
   // Initialize Invoice dialog data when opening in edit mode
@@ -91,7 +94,7 @@ const InvoiceDialog: React.FC<InvoiceDialogProps> = ({
       }
     };
     fetchInvoiceDetails();
-  }, [open, invoice?.id, mode]);
+  }, [open, invoice?.id, mode, invoice, onError, sales, updateInvoiceDialog]);
 
   // Format currency
   const formatCurrency = (amount: number): string => {
@@ -142,8 +145,8 @@ const InvoiceDialog: React.FC<InvoiceDialogProps> = ({
       setNewInvoiceData({});
     } catch (error: unknown) {
       console.error('Error saving invoice:', error);
-      const errorMessage = error && typeof error === 'object' && 'response' in error ?
-        String((error.response as any)?.data?.error) : 'Erreur lors de l\'enregistrement de la facture';
+      const errorMessage = error instanceof Error && 'response' in error ?
+        String((error as AxiosError<{ error?: string }>)?.response?.data?.error) : 'Erreur lors de l\'enregistrement de la facture';
       onError(errorMessage);
     }
   };

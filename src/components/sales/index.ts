@@ -13,6 +13,7 @@ export { default as SalesDialogs } from './SalesDialogs';
 export { default as SaleDialog } from './SaleDialog';
 export { default as InvoiceDialog } from './InvoiceDialog';
 export { default as QuoteDialog } from './QuoteDialog';
+export { default as QuoteConversionDialog } from './QuoteConversionDialog';
 
 // Legacy (deprecated - will be removed November 19, 2025)
 // If you're still using this, migrate to SalesDialogs immediately

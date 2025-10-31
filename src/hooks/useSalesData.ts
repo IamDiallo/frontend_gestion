@@ -84,7 +84,7 @@ export interface CreateQuoteData {
   }>;
 }
 
-interface UseSalesDataReturn {
+export interface UseSalesDataReturn {
   // State
   sales: ExtendedSale[];
   invoices: ExtendedInvoice[];

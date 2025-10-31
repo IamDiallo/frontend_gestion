@@ -8,12 +8,15 @@ import React from 'react';
 import SaleDialog from './SaleDialog';
 import InvoiceDialog from './InvoiceDialog';
 import QuoteDialog from './QuoteDialog';
+import QuoteConversionDialog from './QuoteConversionDialog';
 import { DeleteDialog } from '../common';
 import * as SalesAPI from '../../services/api/sales.api';
+import type { UseSalesDialogsReturn } from '../../hooks/useSalesDialogs';
+import type { UseSalesDataReturn } from '../../hooks/useSalesData';
 
 interface SalesDialogsProps {
-  dialogs: any;
-  data: any;
+  dialogs: UseSalesDialogsReturn;
+  data: UseSalesDataReturn;
   onSuccess: (message: string) => void;
   onError: (message: string) => void;
 }
@@ -83,8 +86,10 @@ const SalesDialogs: React.FC<SalesDialogsProps> = ({
       closeDeleteDialog();
     } catch (error: unknown) {
       console.error('Error deleting item:', error);
-      const errorMessage = error && typeof error === 'object' && 'response' in error ?
-        String((error.response as any)?.data?.error) : 'Erreur lors de la suppression';
+      const errorMessage = error && typeof error === 'object' && 'response' in error &&
+        (error as { response?: { data?: { error?: string } } }).response?.data?.error ?
+        String((error as { response: { data: { error: string } } }).response.data.error) :
+        'Erreur lors de la suppression';
       onError(errorMessage);
     }
   };
@@ -136,6 +141,17 @@ const SalesDialogs: React.FC<SalesDialogsProps> = ({
         updateQuoteDialog={updateQuoteDialog}
         addProductToQuote={addProductToQuote}
         removeProductFromQuote={removeProductFromQuote}
+        onSuccess={onSuccess}
+        onError={onError}
+        refreshData={refreshAllData}
+      />
+
+      {/* Quote Conversion Dialog */}
+      <QuoteConversionDialog
+        open={quoteConversionDialog?.open || false}
+        quote={quoteConversionDialog?.quote}
+        zones={zones}
+        onClose={closeQuoteConversionDialog}
         onSuccess={onSuccess}
         onError={onError}
         refreshData={refreshAllData}
