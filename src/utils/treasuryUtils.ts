@@ -1,6 +1,24 @@
 import { AccountStatement, AccountTransfer, ClientDeposit } from '../interfaces/business';
 
 /**
+ * Client payment form data interface
+ */
+interface ClientPaymentForm {
+  sale_id?: number;
+  amount?: number | string;
+  account?: number;
+}
+
+/**
+ * Supplier payment form data interface
+ */
+interface SupplierPaymentForm {
+  supply_id?: number;
+  amount?: number | string;
+  account?: number;
+}
+
+/**
  * Format currency amount to GNF
  */
 export const formatCurrency = (amount: number): string => {
@@ -184,11 +202,11 @@ export const generateTransferReference = (): string => {
 /**
  * Validate client payment form data
  */
-export const validateClientPaymentForm = (payment: any): { valid: boolean; error: string | null } => {
+export const validateClientPaymentForm = (payment: ClientPaymentForm): { valid: boolean; error: string | null } => {
   if (!payment.sale_id) {
     return { valid: false, error: 'Veuillez sélectionner une vente' };
   }
-  if (!payment.amount || payment.amount <= 0) {
+  if (!payment.amount || Number(payment.amount) <= 0) {
     return { valid: false, error: 'Le montant doit être supérieur à 0' };
   }
   if (!payment.account) {
@@ -200,11 +218,11 @@ export const validateClientPaymentForm = (payment: any): { valid: boolean; error
 /**
  * Validate supplier payment form data
  */
-export const validateSupplierPaymentForm = (payment: any): { valid: boolean; error: string | null } => {
+export const validateSupplierPaymentForm = (payment: SupplierPaymentForm): { valid: boolean; error: string | null } => {
   if (!payment.supply_id) {
     return { valid: false, error: 'Veuillez sélectionner un approvisionnement' };
   }
-  if (!payment.amount || payment.amount <= 0) {
+  if (!payment.amount || Number(payment.amount) <= 0) {
     return { valid: false, error: 'Le montant doit être supérieur à 0' };
   }
   if (!payment.account) {

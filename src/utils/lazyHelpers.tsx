@@ -10,11 +10,14 @@ const LoadingFallback: React.FC = () => (
 
 // Simple lazy load component wrapper
 // eslint-disable-next-line react-refresh/only-export-components
-export const lazyLoad = <T,>(importFunc: () => Promise<{ default: ComponentType<T> }>) => {
+export const lazyLoad = <P extends Record<string, unknown> = Record<string, unknown>>(
+  importFunc: () => Promise<{ default: ComponentType<P> }>
+) => {
   const LazyComponent = lazy(importFunc);
-  
-  return (props: T) => (
+
+  return (props: P) => (
     <Suspense fallback={<LoadingFallback />}>
+      {/* @ts-expect-error - Complex generic types with lazy loading */}
       <LazyComponent {...props} />
     </Suspense>
   );
