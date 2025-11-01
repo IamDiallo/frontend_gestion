@@ -21,6 +21,7 @@ import { StockSupply } from '../../interfaces/inventory';
 import { Zone, Supplier } from '../../interfaces/business';
 import { formatDate } from '../../utils/inventoryUtils';
 import { printBonReception } from '../../utils/printUtils';
+import { getStatusTranslation } from '../../utils/translations';
 
 // ============================================================================
 // INTERFACES
@@ -263,10 +264,10 @@ export const SuppliesTab: React.FC<SuppliesTabProps> = ({
               label="Statut"
             >
               <MenuItem value="">Tous</MenuItem>
-              <MenuItem value="pending">En attente</MenuItem>
-              <MenuItem value="received">Reçu</MenuItem>
-              <MenuItem value="partial">Partiel</MenuItem>
-              <MenuItem value="cancelled">Annulé</MenuItem>
+              <MenuItem value="pending">{getStatusTranslation('pending')}</MenuItem>
+              <MenuItem value="received">{getStatusTranslation('received')}</MenuItem>
+              <MenuItem value="partial">{getStatusTranslation('partial')}</MenuItem>
+              <MenuItem value="cancelled">{getStatusTranslation('cancelled')}</MenuItem>
             </Select>
           </FormControl>
           
@@ -340,5 +341,3 @@ export const SuppliesTab: React.FC<SuppliesTabProps> = ({
     </Box>
   );
 };
-
-export default SuppliesTab;

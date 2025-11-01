@@ -33,14 +33,13 @@ import { ProductionAPI, InventoryAPI, CoreAPI } from '../services/api/index';
 import { Production } from '../interfaces/production';
 import { Product } from '../interfaces/products';
 import { Zone } from '../interfaces/business';
-import PermissionGuard from './PermissionGuard';
-import { usePermissionCheck } from '../hooks/usePermissionCheck';
-import PermissionButton from './common/PermissionButton';
-import StandardDataGrid from './common/StandardDataGrid';
+import { PermissionButton, StandardDataGrid } from './common';
 import { 
   getStandardPrimaryButtonStyles,
   getStandardSecondaryButtonStyles 
 } from '../utils/styleUtils';
+import { usePermissionCheck } from '../hooks/usePermissionCheck';
+import PermissionGuard from './PermissionGuard';
 
 const initialProductionState = {
   product: 0,

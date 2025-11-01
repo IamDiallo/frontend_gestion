@@ -6,6 +6,9 @@
 export { default as StandardButton } from './StandardButton';
 export type { StandardButtonVariant } from './StandardButton';
 
+// Permission Button
+export { default as PermissionButton } from './PermissionButton';
+
 // DataGrid
 export { default as StandardDataGrid } from './StandardDataGrid';
 
@@ -38,9 +41,8 @@ export type {
   InventoryDialogFormData 
 } from './InventoryDialog';
 
-// Styles utilitaires
-export * from '../../utils/styleUtils';
-export * from '../../styles/commonStyles';
+// QR Code
+export { default as ProductQRCode } from './ProductQRCode';
 
 // Traductions
 export * from '../../utils/translations';

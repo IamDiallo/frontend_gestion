@@ -226,5 +226,3 @@ export const QRScanner: React.FC<QRScannerProps> = ({ scanner }) => {
     </Dialog>
   );
 };
-
-export default QRScanner;

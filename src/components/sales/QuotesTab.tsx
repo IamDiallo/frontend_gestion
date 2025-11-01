@@ -24,11 +24,10 @@ import {
   Print as PrintIcon,
   Sync as SyncIcon
 } from '@mui/icons-material';
-import { StandardDataGrid, StatusChip } from '../common';
-import { ApiQuote } from '../../interfaces/sales';
-import { Client } from '../../interfaces/sales';
+import { StandardDataGrid, StatusChip, PermissionButton } from '../common';
+import { getStatusTranslation } from '../../utils/translations';
+import { ApiQuote, Client } from '../../interfaces/sales';
 import { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
-import PermissionButton from '../common/PermissionButton';
 
 interface QuotesTabProps {
   quotes: ApiQuote[];
@@ -127,6 +126,10 @@ const QuotesTab: React.FC<QuotesTabProps> = ({
       headerName: 'Statut',
       flex: 1,
       minWidth: 100,
+      valueGetter: (value, row) => {
+        if (!row || !row.status) return '';
+        return getStatusTranslation(row.status);
+      },
       renderCell: (params: GridRenderCellParams) => {
         if (!params.row || !params.row.status) return <></>;
         return <StatusChip status={params.row.status} />;

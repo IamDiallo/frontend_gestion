@@ -35,7 +35,7 @@ import {
   QrCodeScanner as QrCodeScannerIcon
 } from '@mui/icons-material';
 import { SalesWorkflow } from '../common';
-import QRScanner from '../inventory/QRScanner';
+import { QRScanner } from '../inventory/index';
 import { useQRScanner } from '../../hooks/useQRScanner';
 import * as SalesAPI from '../../services/api/sales.api';
 import type { SalesStatus } from '../common/SalesWorkflow';

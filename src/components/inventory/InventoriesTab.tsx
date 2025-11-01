@@ -19,6 +19,7 @@ import {
 import { Inventory } from '../../interfaces/inventory';
 import { Zone } from '../../interfaces/business';
 import { formatDate, calculateVariance } from '../../utils/inventoryUtils';
+import { getStatusTranslation } from '../../utils/translations';
 
 // ============================================================================
 // INTERFACES
@@ -249,10 +250,10 @@ export const InventoriesTab: React.FC<InventoriesTabProps> = ({
               label="Statut"
             >
               <MenuItem value="">Tous</MenuItem>
-              <MenuItem value="draft">Brouillon</MenuItem>
-              <MenuItem value="in_progress">En cours</MenuItem>
-              <MenuItem value="completed">Terminé</MenuItem>
-              <MenuItem value="cancelled">Annulé</MenuItem>
+              <MenuItem value="draft">{getStatusTranslation('draft')}</MenuItem>
+              <MenuItem value="in_progress">{getStatusTranslation('in_progress')}</MenuItem>
+              <MenuItem value="completed">{getStatusTranslation('completed')}</MenuItem>
+              <MenuItem value="cancelled">{getStatusTranslation('cancelled')}</MenuItem>
             </Select>
           </FormControl>
           
@@ -312,5 +313,3 @@ export const InventoriesTab: React.FC<InventoriesTabProps> = ({
     </Box>
   );
 };
-
-export default InventoriesTab;

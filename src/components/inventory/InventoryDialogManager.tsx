@@ -691,5 +691,3 @@ export const InventoryDialogManager: React.FC<InventoryDialogManagerProps> = ({
     </Dialog>
   );
 };
-
-export default InventoryDialogManager;

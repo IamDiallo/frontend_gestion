@@ -22,11 +22,10 @@ import {
   Visibility as VisibilityIcon,
   Clear as ClearIcon
 } from '@mui/icons-material';
-import { StandardDataGrid, StatusChip } from '../common';
-import { ExtendedSale } from '../../hooks/useSalesData';
-import { Client, Zone } from '../../interfaces/sales';
+import { StandardDataGrid, StatusChip, PermissionButton } from '../common';
+import { getStatusTranslation } from '../../utils/translations';
+import { ExtendedSale, Client, Zone } from '../../interfaces/sales';
 import { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
-import PermissionButton from '../common/PermissionButton';
 
 interface SalesTabProps {
   sales: ExtendedSale[];
@@ -110,6 +109,10 @@ const SalesTab: React.FC<SalesTabProps> = ({
       field: 'status', 
       headerName: 'Statut', 
       flex: 1,
+      valueGetter: (value, row) => {
+        if (!row || !row.status) return '';
+        return getStatusTranslation(row.status);
+      },
       renderCell: (params: GridRenderCellParams) => {
         if (!params.row || !params.row.status) return <></>;
         return <StatusChip status={params.row.status} />;

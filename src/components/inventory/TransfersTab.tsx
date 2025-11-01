@@ -19,6 +19,7 @@ import {
 import { StockTransfer } from '../../interfaces/inventory';
 import { Zone } from '../../interfaces/business';
 import { formatDate } from '../../utils/inventoryUtils';
+import { getStatusTranslation } from '../../utils/translations';
 
 // ============================================================================
 // INTERFACES
@@ -235,9 +236,9 @@ export const TransfersTab: React.FC<TransfersTabProps> = ({
               label="Statut"
             >
               <MenuItem value="">Tous</MenuItem>
-              <MenuItem value="pending">En attente</MenuItem>
-              <MenuItem value="completed">Terminé</MenuItem>
-              <MenuItem value="cancelled">Annulé</MenuItem>
+              <MenuItem value="pending">{getStatusTranslation('pending')}</MenuItem>
+              <MenuItem value="completed">{getStatusTranslation('completed')}</MenuItem>
+              <MenuItem value="cancelled">{getStatusTranslation('cancelled')}</MenuItem>
             </Select>
           </FormControl>
           
@@ -311,5 +312,3 @@ export const TransfersTab: React.FC<TransfersTabProps> = ({
     </Box>
   );
 };
-
-export default TransfersTab;

@@ -14,6 +14,7 @@ import { Clear as ClearIcon, Search as SearchIcon } from '@mui/icons-material';
 import { Stock } from '../../interfaces/inventory';
 import { Zone } from '../../interfaces/business';
 import { formatQuantity } from '../../utils/inventoryUtils';
+import { getStatusTranslation } from '../../utils/translations';
 
 // ============================================================================
 // INTERFACES
@@ -185,9 +186,9 @@ export const StockTab: React.FC<StockTabProps> = ({
               label="État"
             >
               <MenuItem value="">Tous</MenuItem>
-              <MenuItem value="normal">Normal</MenuItem>
-              <MenuItem value="faible">Stock faible</MenuItem>
-              <MenuItem value="rupture">Rupture</MenuItem>
+              <MenuItem value="normal">{getStatusTranslation('normal')}</MenuItem>
+              <MenuItem value="faible">{getStatusTranslation('faible')}</MenuItem>
+              <MenuItem value="rupture">{getStatusTranslation('rupture')}</MenuItem>
             </Select>
           </FormControl>
         </Box>
@@ -211,5 +212,3 @@ export const StockTab: React.FC<StockTabProps> = ({
     </Box>
   );
 };
-
-export default StockTab;

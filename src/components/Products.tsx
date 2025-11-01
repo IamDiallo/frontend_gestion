@@ -38,16 +38,13 @@ import {
   getValidationError 
 } from '../utils/inputValidation';
 import { useTheme } from '@mui/material/styles';
-import PermissionGuard from './PermissionGuard';
-import { usePermissionCheck } from '../hooks/usePermissionCheck';
-import PermissionButton from './common/PermissionButton';
-import ProductQRCode from './common/ProductQRCode';
-import StandardDataGrid from './common/StandardDataGrid';
-import StatusChip from './common/StatusChip';
+import { PermissionButton, ProductQRCode, StandardDataGrid, StatusChip } from './common';
 import { 
   getStandardPrimaryButtonStyles,
   getStandardSecondaryButtonStyles 
 } from '../utils/styleUtils';
+import { usePermissionCheck } from '../hooks/usePermissionCheck';
+import PermissionGuard from './PermissionGuard';
 
 const Products = () => {
   const theme = useTheme();  const { canPerform } = usePermissionCheck();

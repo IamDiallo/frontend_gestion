@@ -23,11 +23,10 @@ import {
   Clear as ClearIcon,
   Print as PrintIcon
 } from '@mui/icons-material';
-import { StandardDataGrid, StatusChip } from '../common';
-import { ExtendedInvoice } from '../../interfaces/sales';
-import { Client } from '../../interfaces/sales';
+import { StandardDataGrid, StatusChip, PermissionButton } from '../common';
+import { getStatusTranslation } from '../../utils/translations';
+import { ExtendedInvoice, Client } from '../../interfaces/sales';
 import { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
-import PermissionButton from '../common/PermissionButton';
 
 interface InvoicesTabProps {
   invoices: ExtendedInvoice[];
@@ -144,6 +143,10 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({
       headerName: 'Statut',
       flex: 1,
       minWidth: 100,
+      valueGetter: (value, row) => {
+        if (!row || !row.status) return '';
+        return getStatusTranslation(row.status);
+      },
       renderCell: (params: GridRenderCellParams) => {
         if (!params.row || !params.row.status) return <></>;
         return <StatusChip status={params.row.status} />;

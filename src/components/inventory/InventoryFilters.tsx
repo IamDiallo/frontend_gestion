@@ -229,5 +229,3 @@ export const InventoryFilters: React.FC<InventoryFiltersProps> = ({
     </Box>
   );
 };
-
-export default InventoryFilters;

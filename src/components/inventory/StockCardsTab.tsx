@@ -36,10 +36,6 @@ export interface StockCardsTabProps {
   onTypeFilterChange: (value: string) => void;
 }
 
-// ============================================================================
-// COMPONENT
-// ============================================================================
-
 export const StockCardsTab: React.FC<StockCardsTabProps> = ({
   stockCards,
   loading,
@@ -51,6 +47,28 @@ export const StockCardsTab: React.FC<StockCardsTabProps> = ({
   onZoneFilterChange,
   onTypeFilterChange,
 }) => {
+  
+  // Helper function to translate transaction types
+  const getTransactionTypeTranslation = (type: string): string => {
+    switch (type) {
+      case 'supply':
+        return 'Approvisionnement';
+      case 'sale':
+        return 'Vente';
+      case 'transfer_in':
+        return 'Entrée par transfert';
+      case 'transfer_out':
+        return 'Sortie par transfert';
+      case 'inventory':
+        return 'Ajustement d\'inventaire';
+      case 'production':
+        return 'Production';
+      case 'return':
+        return 'Retour';
+      default:
+        return type;
+    }
+  };
   
   // ============================================================================
   // COLUMNS DEFINITION
@@ -78,6 +96,10 @@ export const StockCardsTab: React.FC<StockCardsTabProps> = ({
       field: 'transaction_type',
       headerName: 'Type',
       width: 180,
+      valueGetter: (value, row) => {
+        if (!row || !row.transaction_type) return '';
+        return getTransactionTypeTranslation(row.transaction_type);
+      },
       renderCell: (params) => {
         const type = params.value;
         let label = '';
@@ -418,5 +440,3 @@ export const StockCardsTab: React.FC<StockCardsTabProps> = ({
     </Box>
   );
 };
-
-export default StockCardsTab;
