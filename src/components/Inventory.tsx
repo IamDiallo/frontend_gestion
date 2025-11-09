@@ -24,7 +24,7 @@ const Inventory: React.FC = () => {
   }, []);
   
   return (
-    <PermissionGuard requiredPermission="view_inventory" fallbackPath="/dashboard">
+    <PermissionGuard requiredPermission="view_stock" fallbackPath="/dashboard">
       <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         <Box sx={{ mb: 4 }}>
           <Typography 
