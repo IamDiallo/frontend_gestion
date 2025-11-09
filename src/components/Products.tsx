@@ -176,7 +176,7 @@ const Products = () => {
       };
       
       // Remove reference field, backend will generate it based on category
-      // delete productToCreate.reference; // Keep this if backend generates reference
+      delete productToCreate.reference;
       
       console.log('Creating product:', productToCreate);
       const createdProduct = await InventoryAPI.createProduct(productToCreate);

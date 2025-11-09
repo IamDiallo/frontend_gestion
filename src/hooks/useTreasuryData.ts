@@ -241,7 +241,6 @@ export const useTreasuryData = (): UseTreasuryDataReturn => {
     try {
       // Transform ClientDeposit to CashReceipt format expected by backend
       const cashReceiptData = {
-        reference: `DEP-${Date.now()}`, // Generate unique reference
         client: depositData.client,
         account: depositData.account,
         amount: depositData.amount,
