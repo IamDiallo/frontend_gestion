@@ -93,7 +93,22 @@ const SaleDialog: React.FC<SaleDialogProps> = ({
   const qrScanner = useQRScanner(
     productsWithStock || [],
     (product, quantity) => {
-      updateSaleDialog({ currentProduct: product, currentQuantity: quantity });
+      // Try to add the product to cart with stock validation
+      const success = addProductToCart(product, quantity);
+      
+      if (success) {
+        // Reset current product and quantity on success
+        updateSaleDialog({ 
+          currentProduct: null,
+          currentQuantity: 1
+        });
+      } else {
+        // On failure, set the product so user can see the error and adjust
+        updateSaleDialog({ 
+          currentProduct: product, 
+          currentQuantity: quantity 
+        });
+      }
     }
   );
 
@@ -220,22 +235,28 @@ const SaleDialog: React.FC<SaleDialogProps> = ({
     }, 0);
   };
 
-  // Handle add product to cart
-  const handleAddProduct = () => {
-    if (!currentProduct || currentQuantity <= 0) {
-      return;
+  // Shared function to add product to cart with stock validation
+  const addProductToCart = (product: Product, quantity: number): boolean => {
+    if (!product || quantity <= 0) {
+      return false;
+    }
+
+    // Check if zone is selected
+    if (!selectedZone) {
+      setStockError('Veuillez sélectionner une zone avant d\'ajouter des produits');
+      return false;
     }
 
     const existingIndex = selectedProducts.findIndex(
-      item => item.product.id === currentProduct.id
+      item => item.product.id === product.id
     );
-    const currentStock = availableStock[currentProduct.id!] || 0;
+    const currentStock = availableStock[product.id!] || 0;
     const existingQuantity = existingIndex >= 0 ? selectedProducts[existingIndex].quantity : 0;
-    const newTotalQuantity = existingQuantity + currentQuantity;
+    const newTotalQuantity = existingQuantity + quantity;
 
     if (newTotalQuantity > currentStock) {
-      setStockError(`Stock insuffisant pour ${currentProduct.name}. Stock disponible: ${currentStock}, déjà dans le panier: ${existingQuantity}`);
-      return;
+      setStockError(`Stock insuffisant pour ${product.name}. Stock disponible: ${currentStock}, déjà dans le panier: ${existingQuantity}`);
+      return false;
     }
 
     setStockError('');
@@ -249,14 +270,27 @@ const SaleDialog: React.FC<SaleDialogProps> = ({
       updateSaleDialog({ selectedProducts: updatedProducts });
     } else {
       updateSaleDialog({ 
-        selectedProducts: [...selectedProducts, { product: currentProduct, quantity: currentQuantity }]
+        selectedProducts: [...selectedProducts, { product, quantity }]
       });
     }
 
-    updateSaleDialog({ 
-      currentProduct: null,
-      currentQuantity: 1
-    });
+    return true;
+  };
+
+  // Handle add product to cart
+  const handleAddProduct = () => {
+    if (!currentProduct) {
+      return;
+    }
+
+    const success = addProductToCart(currentProduct, currentQuantity);
+    
+    if (success) {
+      updateSaleDialog({ 
+        currentProduct: null,
+        currentQuantity: 1
+      });
+    }
   };
 
   // Handle remove product from cart
@@ -614,7 +648,7 @@ const SaleDialog: React.FC<SaleDialogProps> = ({
       </Dialog>
 
       {/* QR Scanner Dialog */}
-      <QRScanner scanner={qrScanner} />
+      <QRScanner scanner={qrScanner} stockError={stockError} />
     </>
   );
 };

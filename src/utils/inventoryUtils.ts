@@ -335,9 +335,7 @@ export const prepareTransferData = (formData: TransferFormData) => {
     status: (formData.status || 'pending') as 'pending' | 'completed' | 'partial' | 'cancelled',
     items: formData.items.map(item => ({
       product: item.product,
-      quantity: Number(item.quantity),
-      unit_price: item.unit_price ? Number(item.unit_price) : 0,
-      total_price: item.total_price ? Number(item.total_price) : 0
+      quantity: Number(item.quantity)
     }))
   };
 };

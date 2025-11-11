@@ -16,7 +16,7 @@ const Inventory: React.FC = () => {
   const inventoryData = useInventoryData();
   const inventoryFilters = useInventoryFilters({ stocks: inventoryData.stocks, supplies: inventoryData.supplies, transfers: inventoryData.transfers, inventories: inventoryData.inventories, stockCards: inventoryData.stockCards, zones: inventoryData.zones, products: inventoryData.products, suppliers: inventoryData.suppliers });
   const inventoryDialog = useInventoryDialog({ products: inventoryData.products, onSuccess: (m) => setSnackbar({ open: true, message: m, severity: 'success' }), onError: (m) => setSnackbar({ open: true, message: m, severity: 'error' }) });
-  const qrScanner = useQRScanner(inventoryData.products, (p, q) => { inventoryDialog.setFormData({ currentProduct: p, currentQuantity: q }); inventoryDialog.addItem(); });
+  const qrScanner = useQRScanner(inventoryData.products, (p, q) => { inventoryDialog.addItem(p, q); });
   
   useEffect(() => { 
     inventoryData.refreshAllData(); 

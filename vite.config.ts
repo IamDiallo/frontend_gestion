@@ -45,6 +45,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 3000,
+      host: 'localhost', // Use localhost for development
       // Enable proxy for API requests in development
       proxy: {
         '/api': {

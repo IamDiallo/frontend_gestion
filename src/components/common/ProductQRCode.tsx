@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, CircularProgress, Typography, Button } from '@mui/material';
 import { InventoryAPI } from '../../services/api/index';
 
@@ -20,6 +20,9 @@ const ProductQRCode: React.FC<ProductQRCodeProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  
+  // Store URL in ref for proper cleanup
+  const qrCodeUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     const getQRCode = async () => {
@@ -32,6 +35,7 @@ const ProductQRCode: React.FC<ProductQRCodeProps> = ({
         
         // Create an object URL from the blob
         const objectUrl = URL.createObjectURL(qrBlob);
+        qrCodeUrlRef.current = objectUrl;
         setQrCodeUrl(objectUrl);
       } catch (err) {
         console.error(`Error fetching QR code for product ${productId}:`, err);
@@ -45,18 +49,24 @@ const ProductQRCode: React.FC<ProductQRCodeProps> = ({
       getQRCode();
     }
 
-    // Clean up the object URL when the component unmounts
+    // Clean up the object URL when the component unmounts or productId changes
     return () => {
-      if (qrCodeUrl) {
-        URL.revokeObjectURL(qrCodeUrl);
+      if (qrCodeUrlRef.current) {
+        URL.revokeObjectURL(qrCodeUrlRef.current);
+        qrCodeUrlRef.current = null;
       }
     };
   }, [productId]);
 
   const handleDownload = () => {
     if (qrCodeUrl) {
-      // Open QR code in a new tab instead of downloading
-      window.open(qrCodeUrl, '_blank', 'noopener,noreferrer');
+      // Create a temporary link to trigger download
+      const link = document.createElement('a');
+      link.href = qrCodeUrl;
+      link.download = `QR_${productName || `Product_${productId}`}_${new Date().getTime()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
   };
 

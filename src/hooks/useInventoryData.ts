@@ -295,9 +295,7 @@ export const useInventoryData = (): UseInventoryDataReturn => {
 
   const deleteTransfer = useCallback(async (id: number): Promise<void> => {
     try {
-      // Note: API method needs to be added
-      console.warn(`deleteStockTransfer API not available yet for id ${id}`);
-      // await InventoryAPI.deleteStockTransfer(id);
+      await InventoryAPI.deleteStockTransfer(id);
       
       // Refresh transfers, stocks, and stock cards
       await Promise.all([fetchTransfers(), fetchStocks(), fetchStockCards()]);

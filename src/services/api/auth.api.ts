@@ -6,7 +6,7 @@
 import { api, debugAPI } from './config';
 import axios, { AxiosError } from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://192.168.1.127:8000/api';
 
 // ============================================================================
 // TYPES

@@ -14,8 +14,11 @@ import {
   Alert,
   TextField,
   IconButton,
+  Fade,
+  Zoom,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { StandardButton } from '../common';
 import { UseQRScannerReturn } from '../../hooks/useQRScanner';
 
@@ -26,13 +29,15 @@ import { UseQRScannerReturn } from '../../hooks/useQRScanner';
 export interface QRScannerProps {
   // Scanner state and actions from useQRScanner hook
   scanner: UseQRScannerReturn;
+  // Optional stock error to display
+  stockError?: string;
 }
 
 // ============================================================================
 // COMPONENT
 // ============================================================================
 
-export const QRScanner: React.FC<QRScannerProps> = ({ scanner }) => {
+export const QRScanner: React.FC<QRScannerProps> = ({ scanner, stockError }) => {
   
   const { qrState, closeScanner, setScannedQuantity, addScannedProduct, clearError, startScanning, stopScanning } = scanner;
   const scannerElementId = 'qr-scanner-preview';
@@ -43,24 +48,49 @@ export const QRScanner: React.FC<QRScannerProps> = ({ scanner }) => {
   // ============================================================================
   
   /**
-   * Start scanning when dialog opens
+   * Start scanning when dialog opens and permission is granted
    */
   useEffect(() => {
-    if (qrState.isOpen && !qrState.isScanning && !qrState.scannedProduct && !hasStartedScanning.current) {
+    // Only start if:
+    // 1. Dialog is open
+    // 2. Not currently scanning
+    // 3. No product scanned yet
+    // 4. Permission not denied
+    // 5. Haven't already started scanning
+    if (
+      qrState.isOpen && 
+      !qrState.isScanning && 
+      !qrState.scannedProduct && 
+      !qrState.permissionDenied &&
+      !hasStartedScanning.current
+    ) {
       hasStartedScanning.current = true;
-      // Longer delay to ensure DOM element is ready and rendered
-      const timer = setTimeout(() => {
-        const element = document.getElementById(scannerElementId);
-        if (element) {
-          startScanning(scannerElementId);
-        } else {
-          console.error(`Element with id ${scannerElementId} not found`);
-          hasStartedScanning.current = false;
-        }
-      }, 500);
-      return () => clearTimeout(timer);
+      
+      // Use requestAnimationFrame to wait for rendering to complete
+      const tryStartScanning = () => {
+        requestAnimationFrame(() => {
+          const element = document.getElementById(scannerElementId);
+          
+          if (element) {
+            startScanning(scannerElementId);
+          } else {
+            // Element not ready yet, wait a bit more
+            setTimeout(() => {
+              const retryElement = document.getElementById(scannerElementId);
+              if (retryElement) {
+                startScanning(scannerElementId);
+              } else {
+                console.error(`Element with id ${scannerElementId} not found`);
+                hasStartedScanning.current = false;
+              }
+            }, 200);
+          }
+        });
+      };
+      
+      tryStartScanning();
     }
-  }, [qrState.isOpen, qrState.isScanning, qrState.scannedProduct, startScanning, scannerElementId]);
+  }, [qrState.isOpen, qrState.isScanning, qrState.scannedProduct, qrState.permissionDenied, startScanning, scannerElementId]);
   
   /**
    * Stop scanning when dialog closes
@@ -85,6 +115,8 @@ export const QRScanner: React.FC<QRScannerProps> = ({ scanner }) => {
     if (qrState.isScanning) {
       stopScanning();
     }
+    // Reset the flag so scanner can start on next open
+    hasStartedScanning.current = false;
     closeScanner();
   };
   
@@ -103,8 +135,8 @@ export const QRScanner: React.FC<QRScannerProps> = ({ scanner }) => {
    */
   const handleAddProduct = () => {
     addScannedProduct();
-    // Reset and restart scanning
-    hasStartedScanning.current = false;
+    // Close the dialog after adding product
+    closeScanner();
   };
   
   /**
@@ -143,8 +175,25 @@ export const QRScanner: React.FC<QRScannerProps> = ({ scanner }) => {
       </DialogTitle>
       
       <DialogContent>
+        {/* Permission Denied Message */}
+        {qrState.permissionDenied && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            <Typography variant="body2" gutterBottom fontWeight="bold">
+              {qrState.error || 'Accès à la caméra refusé'}
+            </Typography>
+            <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+              Pour utiliser le scanner:
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ mt: 0.5, pl: 2 }}>
+              1. Cliquez sur l'icône de caméra dans la barre d'adresse<br/>
+              2. Sélectionnez "Autoriser"<br/>
+              3. Rechargez la page et réessayez
+            </Typography>
+          </Alert>
+        )}
+        
         {/* Camera Preview - Always render but control visibility */}
-        {!qrState.scannedProduct && !qrState.error && (
+        {!qrState.scannedProduct && !qrState.error && !qrState.permissionDenied && (
           <Box sx={{ mb: 2 }}>
             <div id={scannerElementId} style={{ width: '100%', minHeight: '300px' }} />
             {qrState.isScanning && (
@@ -173,23 +222,38 @@ export const QRScanner: React.FC<QRScannerProps> = ({ scanner }) => {
         {/* Scanned Product Display */}
         {qrState.scannedProduct && (
           <Box sx={{ mb: 2 }}>
-            <Alert severity="success" sx={{ mb: 2 }}>
-              Produit trouvé !
-            </Alert>
+            <Zoom in={true}>
+              <Alert 
+                severity="success" 
+                sx={{ mb: 2 }}
+                icon={<CheckCircleIcon fontSize="inherit" />}
+              >
+                Produit trouvé !
+              </Alert>
+            </Zoom>
             
-            <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, mb: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                {qrState.scannedProduct.name}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Référence: {qrState.scannedProduct.reference}
-              </Typography>
-              {qrState.scannedProduct.description && (
-                <Typography variant="body2" color="text.secondary">
-                  {qrState.scannedProduct.description}
+            <Fade in={true} timeout={300}>
+              <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, mb: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  {qrState.scannedProduct.name}
                 </Typography>
-              )}
-            </Box>
+                <Typography variant="body2" color="text.secondary">
+                  Référence: {qrState.scannedProduct.reference}
+                </Typography>
+                {qrState.scannedProduct.description && (
+                  <Typography variant="body2" color="text.secondary">
+                    {qrState.scannedProduct.description}
+                  </Typography>
+                )}
+              </Box>
+            </Fade>
+            
+            {/* Stock Error Alert */}
+            {stockError && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                {stockError}
+              </Alert>
+            )}
             
             <TextField
               label="Quantité"
@@ -202,11 +266,14 @@ export const QRScanner: React.FC<QRScannerProps> = ({ scanner }) => {
           </Box>
         )}
         
-        {/* Loading State - Show above the video element */}
-        {!qrState.isScanning && !qrState.scannedProduct && !qrState.error && (
-          <Box sx={{ textAlign: 'center', py: 2, position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10 }}>
-            <Typography color="text.secondary">
+        {/* Loading State - Show while waiting for permission or camera initialization */}
+        {!qrState.isScanning && !qrState.scannedProduct && !qrState.error && !qrState.permissionDenied && (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography color="text.secondary" gutterBottom>
               Initialisation de la caméra...
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Si demandé, veuillez autoriser l'accès à la caméra
             </Typography>
           </Box>
         )}
@@ -216,6 +283,17 @@ export const QRScanner: React.FC<QRScannerProps> = ({ scanner }) => {
         <StandardButton variant="outlined" onClick={handleClose}>
           Annuler
         </StandardButton>
+        
+        {qrState.permissionDenied && (
+          <StandardButton 
+            variant="contained" 
+            onClick={() => {
+              window.location.reload();
+            }}
+          >
+            Recharger la page
+          </StandardButton>
+        )}
         
         {qrState.scannedProduct && (
           <StandardButton variant="contained" onClick={handleAddProduct}>

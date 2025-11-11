@@ -46,7 +46,7 @@ export interface UseInventoryDialogReturn {
   openDialog: (operation: InventoryOperationType, item?: StockSupply | StockTransfer | InventoryType) => void;
   closeDialog: () => void;
   setFormData: (data: Partial<InventoryDialogFormData>) => void;
-  addItem: () => Promise<boolean>;
+  addItem: (product?: Product, quantity?: number) => Promise<boolean>;
   removeItem: (index: number) => void;
   validateForm: () => boolean;
   getFormDataForSubmit: () => SupplyFormData | TransferFormData | InventoryFormData | null;
@@ -232,24 +232,40 @@ export const useInventoryDialog = ({
   // ADD ITEM
   // ============================================================================
 
-  const addItem = useCallback(async (): Promise<boolean> => {
+  const addItem = useCallback(async (product?: Product, quantity?: number): Promise<boolean> => {
     // Clear previous errors
     setDialogQuantityError('');
     setDialogPriceError('');
 
+    // Use provided product/quantity or fallback to dialogFormData
+    const currentProduct = product || dialogFormData.currentProduct;
+    const currentQuantity = quantity !== undefined ? quantity : Number(dialogFormData.currentQuantity ?? 0);
+
     // Validate current product and quantity
-    if (!dialogFormData.currentProduct) {
+    if (!currentProduct) {
       onError?.('Veuillez sélectionner un produit');
       return false;
     }
 
-    const currentQuantity = Number(dialogFormData.currentQuantity ?? 0);
     if (currentQuantity <= 0) {
       setDialogQuantityError('La quantité doit être supérieure à 0');
       return false;
     }
 
-    const currentUnitPrice = Number(dialogFormData.currentUnitPrice ?? 0);
+    // For transfers, ensure source zone is selected before adding items
+    if (dialogOperation === 'transfer' && !dialogFormData.sourceZone) {
+      onError?.('Veuillez d\'abord sélectionner la zone source');
+      return false;
+    }
+
+    // Get unit price - use provided price from form or product's purchase price for supply
+    let currentUnitPrice = Number(dialogFormData.currentUnitPrice ?? 0);
+    
+    // If product is provided (from scanner) and it's a supply operation, use product's purchase price
+    if (product && dialogOperation === 'supply' && currentUnitPrice <= 0) {
+      currentUnitPrice = Number(currentProduct.purchase_price ?? 0);
+    }
+    
     if (dialogOperation === 'supply' && currentUnitPrice <= 0) {
       setDialogPriceError('Le prix unitaire doit être supérieur à 0');
       return false;
@@ -262,7 +278,7 @@ export const useInventoryDialog = ({
     if (dialogOperation === 'transfer' && dialogFormData.sourceZone) {
       try {
         const stockData = await InventoryAPI.getStockByZone(Number(dialogFormData.sourceZone));
-        const stockItem = stockData.find(item => item.product === dialogFormData.currentProduct!.id);
+        const stockItem = stockData.find(item => item.product === currentProduct.id);
         
         if (!stockItem || stockItem.quantity <= 0) {
           onError?.('Ce produit n\'est pas disponible dans la zone source');
@@ -275,7 +291,7 @@ export const useInventoryDialog = ({
         }
         
         // Use the product's purchase price for valuation
-        unitPrice = dialogFormData.currentProduct.purchase_price || 0;
+        unitPrice = currentProduct.purchase_price || 0;
         totalPrice = currentQuantity * unitPrice;
       } catch (error) {
         console.error('Error fetching stock data:', error);
@@ -286,7 +302,7 @@ export const useInventoryDialog = ({
 
     // Check if product already exists in items
     const existingItemIndex = dialogFormData.items.findIndex(
-      item => item.product === dialogFormData.currentProduct!.id
+      item => item.product === currentProduct.id
     );
 
     if (existingItemIndex >= 0) {
@@ -299,7 +315,7 @@ export const useInventoryDialog = ({
       if (dialogOperation === 'transfer' && dialogFormData.sourceZone) {
         try {
           const stockData = await InventoryAPI.getStockByZone(Number(dialogFormData.sourceZone));
-          const stockItem = stockData.find(item => item.product === dialogFormData.currentProduct!.id);
+          const stockItem = stockData.find(item => item.product === currentProduct.id);
           
           if (stockItem && (existingQuantity + currentQuantity) > stockItem.quantity) {
             setDialogQuantityError(`Quantité disponible: ${stockItem.quantity}`);
@@ -331,9 +347,9 @@ export const useInventoryDialog = ({
     } else {
       // Add new item
       const newItem = {
-        product: dialogFormData.currentProduct.id,
-        product_name: dialogFormData.currentProduct.name,
-        product_obj: dialogFormData.currentProduct,
+        product: currentProduct.id,
+        product_name: currentProduct.name,
+        product_obj: currentProduct,
         quantity: currentQuantity,
         unit_price: dialogOperation === 'supply' ? currentUnitPrice : (dialogOperation === 'transfer' ? unitPrice : undefined),
         total_price: dialogOperation === 'supply' ? currentQuantity * currentUnitPrice : (dialogOperation === 'transfer' ? totalPrice : undefined)
@@ -434,9 +450,7 @@ export const useInventoryDialog = ({
         status: dialogFormData.status,
         items: dialogFormData.items.map(item => ({
           product: item.product,
-          quantity: Number(item.quantity),
-          unit_price: item.unit_price ? Number(item.unit_price) : undefined,
-          total_price: item.total_price ? Number(item.total_price) : undefined
+          quantity: Number(item.quantity)
         }))
       };
     } else if (dialogOperation === 'inventory') {

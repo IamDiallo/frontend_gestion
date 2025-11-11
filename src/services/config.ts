@@ -1,7 +1,7 @@
 // Define API URL configuration
 
 // Get the API URL from environment variables or use a default
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+export const API_URL = import.meta.env.VITE_API_URL || 'http://192.168.1.127:8000/api';
 
 // Other global API configurations can be added here
 export const DEFAULT_HEADERS = {

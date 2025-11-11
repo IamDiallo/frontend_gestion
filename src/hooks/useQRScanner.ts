@@ -1,17 +1,7 @@
 /**
  * useQRScanner Hook
  * Manages QR code scanning functionality for inventory operations
- * Handles camera control, barcode scanning, and      });
-
-    } catch (error) {
-      console.error('Error starting scanner:', error);
-      setQRState(prev => ({
-        ...prev,
-        error: 'Impossible de démarrer la caméra. Vérifiez les permissions.',
-        isScanning: false,
-      }));
-    }
-  }, [handleBarcodeScanned]);okup
+ * Handles camera control, barcode scanning, and product lookup
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -28,6 +18,8 @@ export interface QRScannerState {
   scannedProduct: Product | null;
   scannedQuantity: number;
   error: string | null;
+  permissionDenied: boolean;
+  permissionStatus: 'unknown' | 'granted' | 'denied' | 'prompt';
 }
 
 export interface UseQRScannerReturn {
@@ -62,10 +54,29 @@ export const useQRScanner = (
     scannedProduct: null,
     scannedQuantity: 1,
     error: null,
+    permissionDenied: false,
+    permissionStatus: 'unknown',
   });
 
   // QR Scanner instance
   const [qrScanner, setQRScanner] = useState<Html5Qrcode | null>(null);
+
+  // ============================================================================
+  // HELPER: Safe scanner stop
+  // ============================================================================
+  
+  /**
+   * Safely stop scanner - catches all errors
+   */
+  const safeStopScanner = useCallback(async (scanner: Html5Qrcode | null) => {
+    if (!scanner) return;
+    
+    try {
+      await scanner.stop();
+    } catch (error) {
+      // Completely ignore all stop errors - they're expected when scanner isn't running
+    }
+  }, []);
 
   // ============================================================================
   // EFFECTS
@@ -74,11 +85,9 @@ export const useQRScanner = (
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (qrScanner) {
-        qrScanner.stop().catch(console.error);
-      }
+      safeStopScanner(qrScanner);
     };
-  }, [qrScanner]);
+  }, [qrScanner, safeStopScanner]);
 
   // ============================================================================
   // SCANNER CONTROL
@@ -88,12 +97,15 @@ export const useQRScanner = (
    * Open scanner dialog
    */
   const openScanner = useCallback(() => {
+    // Just open the dialog - scanner cleanup will be handled by startScanning
     setQRState(prev => ({
       ...prev,
       isOpen: true,
       scannedProduct: null,
       scannedQuantity: 1,
       error: null,
+      permissionDenied: false,
+      permissionStatus: 'unknown',
     }));
   }, []);
 
@@ -102,13 +114,7 @@ export const useQRScanner = (
    */
   const closeScanner = useCallback(async () => {
     // Stop scanning if active
-    if (qrState.isScanning && qrScanner) {
-      try {
-        await qrScanner.stop();
-      } catch (error) {
-        console.error('Error stopping scanner:', error);
-      }
-    }
+    await safeStopScanner(qrScanner);
 
     setQRState(prev => ({
       ...prev,
@@ -117,8 +123,9 @@ export const useQRScanner = (
       scannedProduct: null,
       scannedQuantity: 1,
       error: null,
+      permissionDenied: false,
     }));
-  }, [qrState.isScanning, qrScanner]);
+  }, [qrScanner, safeStopScanner]);
 
   /**
    * Handle scanned barcode
@@ -128,16 +135,35 @@ export const useQRScanner = (
     scanner: Html5Qrcode
   ) => {
     // Stop scanning
-    try {
-      await scanner.stop();
-    } catch (error) {
-      console.error('Error stopping scanner:', error);
-    }
+    await safeStopScanner(scanner);
 
     // Look up product by reference (barcode)
     const product = products.find(p => p.reference === barcode);
 
     if (product) {
+      // Play success sound (optional - user agents may block autoplay)
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.2);
+      } catch (error) {
+        // Silently fail if audio cannot be played
+        console.debug('Could not play success sound:', error);
+      }
+      
       setQRState(prev => ({
         ...prev,
         isScanning: false,
@@ -152,67 +178,93 @@ export const useQRScanner = (
         error: `Aucun produit trouvé avec le code-barres: ${barcode}`,
       }));
     }
-  }, [products]);
+  }, [products, safeStopScanner]);
 
   /**
    * Start QR code scanning
    */
   const startScanning = useCallback(async (elementId: string) => {
     try {
+      // Stop any existing scanner first (silently)
+      await safeStopScanner(qrScanner);
+
       // Create scanner instance
       const scanner = new Html5Qrcode(elementId);
       setQRScanner(scanner);
 
-      // Start scanning
-      await scanner.start(
-        { facingMode: 'environment' }, // Use back camera
-        {
-          fps: 10, // Scan 10 times per second
-          qrbox: { width: 250, height: 250 },
-        },
-        (decodedText) => {
-          // Success callback - handle scanned barcode
-          handleBarcodeScanned(decodedText, scanner);
-        },
-        (errorMessage) => {
-          // Error callback - can be ignored for most cases
-          // This fires frequently and doesn't mean actual errors
-          console.debug('QR scan error:', errorMessage);
-        }
-      );
+      // Try to get available cameras
+      const cameras = await Html5Qrcode.getCameras();
+      
+      if (cameras && cameras.length > 0) {
+        // Start scanning with camera - Html5Qrcode will request camera permission
+        await scanner.start(
+          { facingMode: 'environment' }, // Use back camera
+          {
+            fps: 10, // Scan 10 times per second
+            qrbox: { width: 250, height: 250 },
+          },
+          (decodedText) => {
+            // Success callback - handle scanned barcode
+            handleBarcodeScanned(decodedText, scanner);
+          },
+          (errorMessage) => {
+            // Error callback - can be ignored for most cases
+            // This fires frequently and doesn't mean actual errors
+            console.debug('QR scan error:', errorMessage);
+          }
+        );
 
-      setQRState(prev => ({
-        ...prev,
-        isScanning: true,
-        error: null,
-      }));
+        setQRState(prev => ({
+          ...prev,
+          isScanning: true,
+          error: null,
+          permissionStatus: 'granted',
+          permissionDenied: false,
+        }));
+      } else {
+        throw new Error('No cameras found');
+      }
 
     } catch (error) {
       console.error('Error starting scanner:', error);
+      
+      const err = error as Error;
+      let errorMessage = 'Impossible de démarrer la caméra.';
+      
+      // Provide specific error messages
+      if (err.message?.includes('NotAllowedError') || err.message?.includes('Permission')) {
+        errorMessage = 'Accès à la caméra refusé. Veuillez autoriser l\'accès dans votre navigateur.';
+        setQRState(prev => ({
+          ...prev,
+          permissionDenied: true,
+          permissionStatus: 'denied',
+        }));
+      } else if (err.message?.includes('NotFoundError') || err.message?.includes('No cameras')) {
+        errorMessage = 'Aucune caméra détectée. Vous pouvez scanner un fichier QR code à la place.';
+      } else if (err.message?.includes('NotReadableError')) {
+        errorMessage = 'La caméra est déjà utilisée par une autre application.';
+      } else if (err.message?.includes('not supported') || err.message?.includes('HTTPS')) {
+        errorMessage = 'Le streaming caméra nécessite HTTPS. Utilisez localhost ou un serveur HTTPS.';
+      }
+      
       setQRState(prev => ({
         ...prev,
-        error: 'Impossible de démarrer la caméra. Vérifiez les permissions.',
+        error: errorMessage,
         isScanning: false,
       }));
     }
-  }, [handleBarcodeScanned]);
+  }, [handleBarcodeScanned, qrScanner, safeStopScanner]);
 
   /**
    * Stop QR code scanning
    */
   const stopScanning = useCallback(async () => {
-    if (qrScanner) {
-      try {
-        await qrScanner.stop();
-        setQRState(prev => ({
-          ...prev,
-          isScanning: false,
-        }));
-      } catch (error) {
-        console.error('Error stopping scanner:', error);
-      }
-    }
-  }, [qrScanner]);
+    await safeStopScanner(qrScanner);
+    setQRState(prev => ({
+      ...prev,
+      isScanning: false,
+    }));
+  }, [qrScanner, safeStopScanner]);
 
   // ============================================================================
   // PRODUCT MANAGEMENT

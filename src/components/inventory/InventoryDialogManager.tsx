@@ -599,7 +599,7 @@ export const InventoryDialogManager: React.FC<InventoryDialogManagerProps> = ({
                       <TableCell align="right">
                         {dialogOperation === 'inventory' ? 'Quantité comptée' : 'Quantité'}
                       </TableCell>
-                      {dialogOperation !== 'inventory' && (
+                      {dialogOperation === 'supply' && (
                         <>
                           <TableCell align="right">Prix Unitaire</TableCell>
                           <TableCell align="right">Prix Total</TableCell>
@@ -613,7 +613,7 @@ export const InventoryDialogManager: React.FC<InventoryDialogManagerProps> = ({
                       <TableRow key={index}>
                         <TableCell>{getProductName(item.product)}</TableCell>
                         <TableCell align="right">{Number(item.quantity) || 0}</TableCell>
-                        {dialogOperation !== 'inventory' && (
+                        {dialogOperation === 'supply' && (
                           <>
                             <TableCell align="right">{formatCurrency(Number(item.unit_price) || 0)}</TableCell>
                             <TableCell align="right">{formatCurrency(Number(item.total_price) || 0)}</TableCell>
@@ -640,7 +640,7 @@ export const InventoryDialogManager: React.FC<InventoryDialogManagerProps> = ({
                       <TableCell align="right" sx={{ fontWeight: 'bold' }}>
                         {dialogFormData.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)}
                       </TableCell>
-                      {dialogOperation !== 'inventory' && (
+                      {dialogOperation === 'supply' && (
                         <>
                           <TableCell align="right">
                             {/* Empty cell for unit price column */}
