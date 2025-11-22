@@ -19,6 +19,7 @@ import {
   People as PeopleIcon,
   LocationOn as LocationIcon,
   Receipt as ReceiptIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import CheckIcon from '@mui/icons-material/Check';
 import PermissionGuard from './PermissionGuard';
@@ -597,10 +598,30 @@ const Settings = () => {
 
   return (
     <PermissionGuard requiredPermission="change_user" fallbackPath="/">
-      <Box sx={{ backgroundColor: theme.palette.background.default, minHeight: '100vh', p: 3 }}>
-        <Typography variant="h4" sx={{ mb: 3, fontWeight: 'bold', color: theme.palette.text.primary }}>
-          Paramètres du système
-        </Typography>
+      <Box >
+        <Box sx={{ mb: 4 }}>
+          <Typography 
+            variant="h4"
+            component="h1" 
+            gutterBottom 
+            sx={{ 
+              fontWeight: 700, 
+              color: theme.palette.primary.main,
+              borderBottom: `2px solid ${theme.palette.primary.light}`,
+              pb: 1,
+              width: 'fit-content',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1
+            }}
+          >
+            <SettingsIcon />
+            Paramètres du système
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Configurez les catégories, unités, devises et autres paramètres
+          </Typography>
+        </Box>
 
         <Paper elevation={2} sx={{ mb: 3, p: 1 }}>          
           <Tabs 

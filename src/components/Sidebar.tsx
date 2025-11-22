@@ -16,7 +16,7 @@ import {
   People,
   LocalShipping,
   Inventory,
-  Storefront,
+  Factory,
   Group,
   AccountBalance,
   Settings,
@@ -104,7 +104,7 @@ const Sidebar: React.FC<SidebarProps> = ({ open, onClose, variant, width }) => {
     },
     {
       to: "/production",
-      icon: <Storefront />,
+      icon: <Factory />,
       text: "Production",
       requiredPermission: "view_production"
     },

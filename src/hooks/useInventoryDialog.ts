@@ -136,7 +136,8 @@ export const useInventoryDialog = ({
               product_name: prod?.name || '',
               product_obj: prod,
               unit_price: 0,
-              total_price: 0
+              total_price: 0,
+              unit_symbol: i.unit_symbol
             };
           }) || [],
           status: transferItem.status as InventoryDialogStatus,
@@ -161,7 +162,8 @@ export const useInventoryDialog = ({
               product_name: prod?.name || '',
               product_obj: prod,
               unit_price: 0,
-              total_price: 0
+              total_price: 0,
+              unit_symbol: i.unit_symbol
             };
           }) || [],
           status: inventoryItem.status as InventoryDialogStatus,

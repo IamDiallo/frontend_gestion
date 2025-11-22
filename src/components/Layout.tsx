@@ -95,6 +95,7 @@ const Layout: React.FC = () => {
   useEffect(() => {
     const fetchUserInfo = async () => {
       try {
+        // Use cached data from AuthService.getCurrentUser (uses 5-minute cache)
         const userData = await AuthService.getCurrentUser();
         setCurrentUser({
           username: userData.username || 'Utilisateur',
@@ -104,14 +105,16 @@ const Layout: React.FC = () => {
         console.error('Error fetching user info:', error);
         // Fallback to stored permissions data if API call fails
         setCurrentUser({
-          username: 'Utilisateur',
+          username: localStorage.getItem('username') || 'Utilisateur',
           role: userRole || ''
         });
       }
     };
 
     fetchUserInfo();
-  }, [userRole]);
+    // Only run once on mount, not when userRole changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Effect to handle screen size changes
   useEffect(() => {

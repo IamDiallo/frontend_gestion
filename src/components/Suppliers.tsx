@@ -25,7 +25,8 @@ import {
   Search as SearchIcon,
   Phone as PhoneIcon,
   Email as EmailIcon,
-  LocationOn as LocationIcon
+  LocationOn as LocationIcon,
+  LocalShipping as LocalShippingIcon
 } from '@mui/icons-material';
 
 import { Supplier } from '../interfaces/business';
@@ -370,7 +371,23 @@ const Suppliers = () => {
     <PermissionGuard requiredPermission="view_supplier" fallbackPath="/">
       <Box>
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" component="h1" gutterBottom>
+          <Typography 
+            variant="h4" 
+            component="h1" 
+            gutterBottom
+            sx={{ 
+              fontWeight: 700, 
+              color: 'primary.main',
+              borderBottom: '2px solid',
+              borderColor: 'primary.light',
+              pb: 1,
+              width: 'fit-content',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1
+            }}
+          >
+            <LocalShippingIcon />
             Gestion des Fournisseurs
           </Typography>
           <Typography variant="body1" color="text.secondary">
@@ -417,6 +434,8 @@ const Suppliers = () => {
               loading={loading}
               getRowId={(row) => row.id || Math.random()}
               onRowClick={handleRowClick}
+              showToolbar
+              exportFileName="fournisseurs"
               sx={{
                 minHeight: 400,
                 '& .MuiDataGrid-row': {

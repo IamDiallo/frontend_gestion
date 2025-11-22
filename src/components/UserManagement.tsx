@@ -575,9 +575,13 @@ const UserManagement: React.FC = () => {
               color: theme.palette.primary.main,
               borderBottom: `2px solid ${theme.palette.primary.light}`,
               pb: 1,
-              width: 'fit-content'
+              width: 'fit-content',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1
             }}
           >
+            <GroupIcon />
             Gestion des Accès
           </Typography>
           <Typography variant="body1" color="text.secondary">

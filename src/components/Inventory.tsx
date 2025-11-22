@@ -13,15 +13,81 @@ const Inventory: React.FC = () => {
   const theme = useTheme();
   const [activeTab, setActiveTab] = useState(0);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'warning' | 'info' });
+  const [loadedTabs, setLoadedTabs] = useState<Set<number>>(new Set([0])); // Track which tabs have been loaded
+  const [isInitialLoading, setIsInitialLoading] = useState(true); // Track initial loading
+  
   const inventoryData = useInventoryData();
   const inventoryFilters = useInventoryFilters({ stocks: inventoryData.stocks, supplies: inventoryData.supplies, transfers: inventoryData.transfers, inventories: inventoryData.inventories, stockCards: inventoryData.stockCards, zones: inventoryData.zones, products: inventoryData.products, suppliers: inventoryData.suppliers });
   const inventoryDialog = useInventoryDialog({ products: inventoryData.products, onSuccess: (m) => setSnackbar({ open: true, message: m, severity: 'success' }), onError: (m) => setSnackbar({ open: true, message: m, severity: 'error' }) });
   const qrScanner = useQRScanner(inventoryData.products, (p, q) => { inventoryDialog.addItem(p, q); });
   
-  useEffect(() => { 
-    inventoryData.refreshAllData(); 
+  // Initial load - only essential data
+  useEffect(() => {
+    const loadInitialData = async () => {
+      try {
+        console.log('📦 Loading initial inventory data...');
+        setIsInitialLoading(true);
+        // Set loading to false in inventoryData to prevent spinner
+        inventoryData.setLoading(false);
+        
+        // Load only essential data for the first tab (Stock)
+        await Promise.all([
+          inventoryData.fetchStocks(),
+          inventoryData.fetchZones(),
+          inventoryData.fetchProducts()
+        ]);
+        console.log('✅ Initial inventory data loaded');
+      } catch (error) {
+        console.error('❌ Error loading initial data:', error);
+      } finally {
+        setIsInitialLoading(false);
+      }
+    };
+    
+    loadInitialData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  
+  // Lazy load data when tab changes
+  useEffect(() => {
+    if (loadedTabs.has(activeTab)) {
+      console.log(`📋 Tab ${activeTab} already loaded, skipping`);
+      return; // Already loaded
+    }
+    
+    const loadTabData = async () => {
+      try {
+        console.log(`📦 Loading data for tab ${activeTab}...`);
+        switch (activeTab) {
+          case 1: // Réceptions
+            await Promise.all([
+              inventoryData.fetchSupplies(),
+              inventoryData.fetchSuppliers() // Only needed for Supplies tab
+            ]);
+            console.log('✅ Supplies and suppliers loaded');
+            break;
+          case 2: // Transferts
+            await inventoryData.fetchTransfers();
+            console.log('✅ Transfers loaded');
+            break;
+          case 3: // Inventaires
+            await inventoryData.fetchInventories();
+            console.log('✅ Inventories loaded');
+            break;
+          case 4: // Fiches de Stock
+            await inventoryData.fetchStockCards();
+            console.log('✅ Stock cards loaded');
+            break;
+        }
+        setLoadedTabs(prev => new Set(prev).add(activeTab));
+      } catch (error) {
+        console.error(`❌ Error loading data for tab ${activeTab}:`, error);
+      }
+    };
+    
+    loadTabData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
   
   return (
     <PermissionGuard requiredPermission="view_stock" fallbackPath="/dashboard">
@@ -78,7 +144,7 @@ const Inventory: React.FC = () => {
             {activeTab === 0 && (
               <StockTab 
                 stocks={inventoryFilters.filteredStocks} 
-                loading={inventoryData.loading}
+                loading={isInitialLoading}
                 zones={inventoryData.zones}
                 {...inventoryFilters.stockFilters}
               />
@@ -87,7 +153,7 @@ const Inventory: React.FC = () => {
             {activeTab === 1 && (
               <SuppliesTab 
                 supplies={inventoryFilters.filteredSupplies} 
-                loading={inventoryData.loading}
+                loading={isInitialLoading}
                 zones={inventoryData.zones}
                 suppliers={inventoryData.suppliers}
                 {...inventoryFilters.supplyFilters}
@@ -100,7 +166,7 @@ const Inventory: React.FC = () => {
             {activeTab === 2 && (
               <TransfersTab 
                 transfers={inventoryFilters.filteredTransfers} 
-                loading={inventoryData.loading}
+                loading={isInitialLoading}
                 zones={inventoryData.zones}
                 {...inventoryFilters.transferFilters}
                 onAdd={() => inventoryDialog.openDialog('transfer')} 
@@ -112,7 +178,7 @@ const Inventory: React.FC = () => {
             {activeTab === 3 && (
               <InventoriesTab 
                 inventories={inventoryFilters.filteredInventories} 
-                loading={inventoryData.loading}
+                loading={isInitialLoading}
                 zones={inventoryData.zones}
                 {...inventoryFilters.inventoryFilters}
                 onAdd={() => inventoryDialog.openDialog('inventory')} 
@@ -124,7 +190,7 @@ const Inventory: React.FC = () => {
             {activeTab === 4 && (
               <StockCardsTab 
                 stockCards={inventoryFilters.filteredStockCards} 
-                loading={inventoryData.loading}
+                loading={isInitialLoading}
                 zones={inventoryData.zones}
                 {...inventoryFilters.stockCardFilters}
               />

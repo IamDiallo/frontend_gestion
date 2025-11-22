@@ -43,6 +43,7 @@ import type { ExtendedInvoice, ApiQuote } from '../interfaces/sales';
 const Sales: React.FC = () => {
   const theme = useTheme();
   const [currentTab, setCurrentTab] = useState(0);
+  const [loadedTabs, setLoadedTabs] = useState<Set<number>>(new Set([0])); // Track loaded tabs
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -71,10 +72,48 @@ const Sales: React.FC = () => {
   // EFFECTS
   // =============================================================================
 
+  // Initial load - only essential data for first tab (Sales)
   useEffect(() => {
-    salesData.refreshAllData();
+    const loadInitialData = async () => {
+      try {
+        await Promise.all([
+          salesData.fetchSales(),
+          salesData.fetchClients(),
+          salesData.fetchProducts(),
+          salesData.fetchZones()
+        ]);
+      } catch (error) {
+        console.error('Error loading initial data:', error);
+      }
+    };
+    
+    loadInitialData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Lazy load data when tab changes
+  useEffect(() => {
+    if (loadedTabs.has(currentTab)) return; // Already loaded
+    
+    const loadTabData = async () => {
+      try {
+        switch (currentTab) {
+          case 1: // Factures
+            await salesData.fetchInvoices();
+            break;
+          case 2: // Devis
+            await salesData.fetchQuotes();
+            break;
+        }
+        setLoadedTabs(prev => new Set(prev).add(currentTab));
+      } catch (error) {
+        console.error(`Error loading data for tab ${currentTab}:`, error);
+      }
+    };
+    
+    loadTabData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTab]);
 
   // Fetch products with stock when zone changes
   useEffect(() => {

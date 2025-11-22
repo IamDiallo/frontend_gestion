@@ -21,7 +21,7 @@ import {
   InputAdornment,
 } from '@mui/material';
 import { GridRenderCellParams } from '@mui/x-data-grid';
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, QrCode as QrCodeIcon } from '@mui/icons-material';
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon, QrCode as QrCodeIcon, Category as CategoryIcon } from '@mui/icons-material';
 import { 
   Product, 
   ProductCategory,
@@ -104,16 +104,22 @@ const Products = () => {
         setLoading(true);
         setError(null);
         
+        // Load products first (most important)
         const productsData = await InventoryAPI.fetchProducts();
         setProducts(productsData);
         
+        // Load categories and units in parallel (less critical)
         setLoadingCategories(true);
-        const categoriesData = await SettingsAPI.fetchProductCategories();
+        setLoadingUnits(true);
+        
+        const [categoriesData, unitsData] = await Promise.all([
+          SettingsAPI.fetchProductCategories(),
+          SettingsAPI.fetchUnitsOfMeasure()
+        ]);
+        
         setCategories(categoriesData);
         setLoadingCategories(false);
         
-        setLoadingUnits(true);
-        const unitsData = await SettingsAPI.fetchUnitsOfMeasure();
         setUnits(unitsData);
         setLoadingUnits(false);
       } catch (err) {
@@ -364,7 +370,23 @@ const Products = () => {
           }}
         >
           <Box>
-            <Typography variant="h4" component="h1" gutterBottom>
+            <Typography 
+              variant="h4" 
+              component="h1" 
+              gutterBottom
+              sx={{ 
+                fontWeight: 700, 
+                color: 'primary.main',
+                borderBottom: '2px solid',
+                borderColor: 'primary.light',
+                pb: 1,
+                width: 'fit-content',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1
+              }}
+            >
+              <CategoryIcon />
               Gestion des Produits
             </Typography>
             <Typography variant="body1" color="text.secondary">
@@ -607,6 +629,8 @@ const Products = () => {
               onPaginationModelChange={setPaginationModel}
               onRowClick={handleRowClick}
               loading={loading}
+              showToolbar
+              exportFileName="produits"
               getRowId={(row) => {
                 if (!row || row.id === undefined) return Math.random();
                 return row.id;

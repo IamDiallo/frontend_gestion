@@ -38,6 +38,7 @@ import {
 } from '../../utils/inputValidation';
 import { Product } from '../../interfaces/products';
 import { Zone, Supplier } from '../../interfaces/business';
+import { UnitOfMeasure } from '../../interfaces/settings';
 
 // Currency formatting function
 const formatCurrency = (amount: number | null | undefined): string => {
@@ -69,6 +70,7 @@ export interface InventoryDialogItem {
   unit_price: number;
   total_price: number;
   expected_quantity?: number; // For inventory operations
+  unit_symbol?: string; // Unit abbreviation from backend
 }
 
 // Form data structure that adapts based on operation type
@@ -102,6 +104,7 @@ interface InventoryDialogProps {
   products: Product[];
   zones: Zone[];
   suppliers?: Supplier[]; // Only needed for supply operations
+  units?: UnitOfMeasure[]; // Units of measure for display
   loading: boolean;
   quantityError: string;
   priceError: string;
@@ -126,6 +129,7 @@ const InventoryDialog: React.FC<InventoryDialogProps> = ({
   products,
   zones,
   suppliers = [],
+  units = [],
   loading,
   quantityError,
   priceError,
@@ -138,6 +142,12 @@ const InventoryDialog: React.FC<InventoryDialogProps> = ({
   getProductName,
 }) => {
   const theme = useTheme();
+
+  // Helper function to get unit symbol
+  const getUnitSymbol = (unitId: number): string => {
+    const unit = units.find(u => u.id === unitId);
+    return unit?.abbreviation || '';
+  };
 
   // Get dialog title based on operation type
   const getDialogTitle = () => {
@@ -412,18 +422,28 @@ const InventoryDialog: React.FC<InventoryDialogProps> = ({
                     fullWidth
                   />
                 )}
-                renderOption={(props, option) => (
-                  <li {...props} key={`product-${option.id}`}>
-                    <Box sx={{ width: '100%' }}>
-                      <Typography variant="body1">{option.name}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Réf: {option.reference} • Prix: {formatCurrency(
-                          operationType === 'supply' ? option.purchase_price : option.selling_price
-                        )}
-                      </Typography>
-                    </Box>
-                  </li>
-                )}
+                renderOption={(props, option) => {
+                  const unitSymbol = getUnitSymbol(option.unit);
+                  return (
+                    <li {...props} key={`product-${option.id}`}>
+                      <Box sx={{ width: '100%' }}>
+                        <Typography variant="body1">
+                          {option.name} 
+                          {unitSymbol && (
+                            <Typography component="span" sx={{ ml: 1, color: 'primary.main', fontWeight: 600 }}>
+                              ({unitSymbol})
+                            </Typography>
+                          )}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Réf: {option.reference} • Prix: {formatCurrency(
+                            operationType === 'supply' ? option.purchase_price : option.selling_price
+                          )}
+                        </Typography>
+                      </Box>
+                    </li>
+                  );
+                }}
                 sx={{ flexGrow: 1 }} 
               />
 
@@ -478,29 +498,40 @@ const InventoryDialog: React.FC<InventoryDialogProps> = ({
                       <TableCell align="right">
                         {operationType === 'inventory' ? 'Quantité comptée' : 'Quantité'}
                       </TableCell>
+                      <TableCell align="center">Unité</TableCell>
                       <TableCell align="right">Prix Unitaire</TableCell>
                       <TableCell align="right">Prix Total</TableCell>
                       <TableCell align="right">Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {formData.items.map((item, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{getProductName(item.product)}</TableCell>
-                        <TableCell align="right">{Number(item.quantity) || 0}</TableCell>
-                        <TableCell align="right">{formatCurrency(Number(item.unit_price) || 0)}</TableCell>
-                        <TableCell align="right">{formatCurrency(Number(item.total_price) || 0)}</TableCell>
-                        <TableCell align="right">
-                          <IconButton 
-                            size="small" 
-                            color="error" 
-                            onClick={() => onRemoveItem(index)}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {formData.items.map((item, index) => {
+                      const product = products.find(p => p.id === item.product);
+                      const unitSymbol = product ? getUnitSymbol(product.unit) : '';
+                      
+                      return (
+                        <TableRow key={index}>
+                          <TableCell>{getProductName(item.product)}</TableCell>
+                          <TableCell align="right">{Number(item.quantity) || 0}</TableCell>
+                          <TableCell align="center">
+                            <Typography variant="body2" sx={{ fontWeight: 500, color: 'primary.main' }}>
+                              {unitSymbol}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">{formatCurrency(Number(item.unit_price) || 0)}</TableCell>
+                          <TableCell align="right">{formatCurrency(Number(item.total_price) || 0)}</TableCell>
+                          <TableCell align="right">
+                            <IconButton 
+                              size="small" 
+                              color="error" 
+                              onClick={() => onRemoveItem(index)}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                     {/* Totals row */}
                     <TableRow>
                       <TableCell sx={{ fontWeight: 'bold' }}>
@@ -508,6 +539,9 @@ const InventoryDialog: React.FC<InventoryDialogProps> = ({
                       </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 'bold' }}>
                         {formData.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)}
+                      </TableCell>
+                      <TableCell align="center">
+                        {/* Empty cell for unit column */}
                       </TableCell>
                       <TableCell align="right">
                         {/* Empty cell for unit price column */}

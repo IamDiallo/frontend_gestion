@@ -71,8 +71,22 @@ const Dashboard: React.FC = () => {
 
   // Load initial data
   useEffect(() => {
+    console.log('📊 Dashboard loading data for tab:', selectedTab);
     loadAllData(reportType, selectedPeriod, startDate, endDate);
-  }, [selectedTab, selectedPeriod, customStartDate, customEndDate, loadAllData, reportType, startDate, endDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTab, reportType]); // Only reload when tab or report type changes
+
+  // Handle period/date changes separately to avoid multiple reloads
+  useEffect(() => {
+    // Debounce the reload when dates change
+    const timeoutId = setTimeout(() => {
+      console.log('📅 Dashboard reloading due to date change');
+      loadAllData(reportType, selectedPeriod, startDate, endDate);
+    }, 500); // Wait 500ms after last change
+    
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPeriod, startDate, endDate]);
 
   // Handle data export
   const handleExportData = () => {

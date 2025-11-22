@@ -7,6 +7,7 @@
 import { api } from './config';
 import { User, Group, UserCreateRequest } from '../../interfaces/core';
 import type { Zone, Permission, CategorizedPermissions, UserProfile } from '../../interfaces/core';
+import { getCurrentUser as getCachedCurrentUser } from './auth.api'; // Import cached version
 
 // ============================================================================
 // USERS
@@ -17,9 +18,12 @@ export const fetchUsers = async (): Promise<User[]> => {
   return response.data.results || response.data;
 };
 
-export const fetchCurrentUser = async (): Promise<User> => {
-  const response = await api.get('/core/users/me/');
-  return response.data;
+/**
+ * Fetch current user with 5-minute cache
+ * This delegates to auth.api.ts getCurrentUser which has caching
+ */
+export const fetchCurrentUser = async (forceRefresh = false): Promise<User> => {
+  return getCachedCurrentUser(forceRefresh);
 };
 
 export const fetchUser = async (id: number): Promise<User> => {
@@ -61,26 +65,60 @@ export const updateUserProfile = async (id: number, data: Partial<UserProfile>):
 };
 
 // ============================================================================
-// ZONES
+// ZONES (with caching)
 // ============================================================================
 
-export const fetchZones = async (): Promise<Zone[]> => {
+const ZONES_CACHE_KEY = 'zones_cache';
+const ZONES_CACHE_TIME_KEY = 'zones_cache_time';
+const ZONES_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes (zones rarely change)
+
+export const fetchZones = async (forceRefresh = false): Promise<Zone[]> => {
+  // Check cache first
+  if (!forceRefresh) {
+    const cachedData = localStorage.getItem(ZONES_CACHE_KEY);
+    const cachedTime = localStorage.getItem(ZONES_CACHE_TIME_KEY);
+    
+    if (cachedData && cachedTime) {
+      const age = Date.now() - parseInt(cachedTime, 10);
+      if (age < ZONES_CACHE_DURATION) {
+        console.log('✅ Using cached zones (fresh for', Math.round((ZONES_CACHE_DURATION - age) / 1000), 'more seconds)');
+        return JSON.parse(cachedData);
+      }
+    }
+  }
+  
+  console.log('🔄 Fetching fresh zones from server...');
   const response = await api.get('/core/zones/');
-  return response.data.results || response.data;
+  const zones = response.data.results || response.data;
+  
+  // Cache the response
+  localStorage.setItem(ZONES_CACHE_KEY, JSON.stringify(zones));
+  localStorage.setItem(ZONES_CACHE_TIME_KEY, Date.now().toString());
+  
+  return zones;
 };
 
 export const createZone = async (data: Partial<Zone>): Promise<Zone> => {
   const response = await api.post('/core/zones/', data);
+  // Invalidate cache when creating a zone
+  localStorage.removeItem(ZONES_CACHE_KEY);
+  localStorage.removeItem(ZONES_CACHE_TIME_KEY);
   return response.data;
 };
 
 export const updateZone = async (id: number, data: Partial<Zone>): Promise<Zone> => {
   const response = await api.patch(`/core/zones/${id}/`, data);
+  // Invalidate cache when updating a zone
+  localStorage.removeItem(ZONES_CACHE_KEY);
+  localStorage.removeItem(ZONES_CACHE_TIME_KEY);
   return response.data;
 };
 
 export const deleteZone = async (id: number): Promise<void> => {
   await api.delete(`/core/zones/${id}/`);
+  // Invalidate cache when deleting a zone
+  localStorage.removeItem(ZONES_CACHE_KEY);
+  localStorage.removeItem(ZONES_CACHE_TIME_KEY);
 };
 
 // ============================================================================

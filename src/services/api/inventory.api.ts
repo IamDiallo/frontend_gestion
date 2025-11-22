@@ -29,12 +29,37 @@ export interface OutstandingSupplySummary {
 }
 
 // ============================================================================
-// PRODUCTS
+// PRODUCTS (with caching)
 // ============================================================================
 
-export const fetchProducts = async (): Promise<Product[]> => {
+const PRODUCTS_CACHE_KEY = 'products_cache';
+const PRODUCTS_CACHE_TIME_KEY = 'products_cache_time';
+const PRODUCTS_CACHE_DURATION = 3 * 60 * 1000; // 3 minutes (products change frequently)
+
+export const fetchProducts = async (forceRefresh = false): Promise<Product[]> => {
+  // Check cache first
+  if (!forceRefresh) {
+    const cachedData = localStorage.getItem(PRODUCTS_CACHE_KEY);
+    const cachedTime = localStorage.getItem(PRODUCTS_CACHE_TIME_KEY);
+    
+    if (cachedData && cachedTime) {
+      const age = Date.now() - parseInt(cachedTime, 10);
+      if (age < PRODUCTS_CACHE_DURATION) {
+        console.log('✅ Using cached products (fresh for', Math.round((PRODUCTS_CACHE_DURATION - age) / 1000), 'more seconds)');
+        return JSON.parse(cachedData);
+      }
+    }
+  }
+  
+  console.log('🔄 Fetching fresh products from server...');
   const response = await api.get('/inventory/products/');
-  return response.data.results || response.data;
+  const products = response.data.results || response.data;
+  
+  // Cache the response
+  localStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(products));
+  localStorage.setItem(PRODUCTS_CACHE_TIME_KEY, Date.now().toString());
+  
+  return products;
 };
 
 export const fetchProduct = async (id: number): Promise<Product> => {
@@ -45,17 +70,26 @@ export const fetchProduct = async (id: number): Promise<Product> => {
 export const createProduct = async (data: FormData | Partial<Product>): Promise<Product> => {
   const headers = data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {};
   const response = await api.post('/inventory/products/', data, { headers });
+  // Invalidate products cache when creating
+  localStorage.removeItem(PRODUCTS_CACHE_KEY);
+  localStorage.removeItem(PRODUCTS_CACHE_TIME_KEY);
   return response.data;
 };
 
 export const updateProduct = async (id: number, data: FormData | Partial<Product>): Promise<Product> => {
   const headers = data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {};
   const response = await api.patch(`/inventory/products/${id}/`, data, { headers });
+  // Invalidate products cache when updating
+  localStorage.removeItem(PRODUCTS_CACHE_KEY);
+  localStorage.removeItem(PRODUCTS_CACHE_TIME_KEY);
   return response.data;
 };
 
 export const deleteProduct = async (id: number): Promise<void> => {
   await api.delete(`/inventory/products/${id}/`);
+  // Invalidate products cache when deleting
+  localStorage.removeItem(PRODUCTS_CACHE_KEY);
+  localStorage.removeItem(PRODUCTS_CACHE_TIME_KEY);
 };
 
 export const fetchProductQRCode = async (productId: number): Promise<Blob> => {

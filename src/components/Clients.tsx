@@ -26,7 +26,8 @@ import {
   Search as SearchIcon,
   Phone as PhoneIcon,
   Email as EmailIcon,
-  LocationOn as LocationIcon
+  LocationOn as LocationIcon,
+  People as PeopleIcon
 } from '@mui/icons-material';
 import { PartnersAPI, TreasuryAPI, SettingsAPI } from '../services/api/index';
 import { Client } from '../interfaces/business';
@@ -67,7 +68,6 @@ const Clients = () => {
   
   // Fetch price groups dynamically from backend
   const [priceGroups, setPriceGroups] = useState<PriceGroup[]>([]);
-  const [loadingPriceGroups, setLoadingPriceGroups] = useState(false);
   
   // Replace static accounts with dynamic ones
   const [availableAccounts, setAvailableAccounts] = useState<Account[]>([]);
@@ -97,46 +97,31 @@ const Clients = () => {
   };
 
   useEffect(() => {
-    const fetchClients = async () => {
+    const fetchInitialData = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await PartnersAPI.fetchClients();
-        setClients(data);
+        
+        // Load clients and price groups in parallel
+        const [clientsData, priceGroupsData] = await Promise.all([
+          PartnersAPI.fetchClients(),
+          SettingsAPI.fetchPriceGroups()
+        ]);
+        
+        setClients(clientsData);
+        setPriceGroups(priceGroupsData);
       } catch (err) {
-        console.error('Error loading clients:', err);
-        setError('Erreur lors du chargement des clients. Veuillez réessayer plus tard.');
+        console.error('Error loading data:', err);
+        setError('Erreur lors du chargement des données. Veuillez réessayer plus tard.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchClients();
-
+    fetchInitialData();
   }, []);
 
-  // Fetch price groups from backend
-  useEffect(() => {
-    const fetchPriceGroups = async () => {
-      try {
-        setLoadingPriceGroups(true);
-        const data = await SettingsAPI.fetchPriceGroups();
-        setPriceGroups(data);
-      } catch (err) {
-        console.error('Error loading price groups:', err);
-        setSnackbar({
-          open: true,
-          message: 'Erreur lors du chargement des groupes de prix',
-          severity: 'error'
-        });
-      } finally {
-        setLoadingPriceGroups(false);
-      }
-    };
-
-    fetchPriceGroups();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Remove the separate price groups useEffect as it's now combined above
 
   // Add effect to load available client accounts
   useEffect(() => {
@@ -487,7 +472,23 @@ const Clients = () => {
     <PermissionGuard requiredPermission="view_client" fallbackPath="/">
       <Box>
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" component="h1" gutterBottom>
+          <Typography 
+            variant="h4" 
+            component="h1" 
+            gutterBottom
+            sx={{ 
+              fontWeight: 700, 
+              color: 'primary.main',
+              borderBottom: '2px solid',
+              borderColor: 'primary.light',
+              pb: 1,
+              width: 'fit-content',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1
+            }}
+          >
+            <PeopleIcon />
             Gestion des Clients
           </Typography>
           <Typography variant="body1" color="text.secondary">
@@ -548,6 +549,8 @@ const Clients = () => {
               loading={loading}
               getRowId={(row) => row.id || Math.random()}
               onRowClick={handleRowClick}
+              showToolbar
+              exportFileName="clients"
               sx={{
                 minHeight: 400,
                 '& .MuiDataGrid-row': {
@@ -567,7 +570,7 @@ const Clients = () => {
           availableAccounts={availableAccounts.map(a => ({ id: a.id, name: a.name }))}
           loadingAccounts={loadingAccounts}
           priceGroups={priceGroups.map(pg => ({ id: pg.id, name: pg.name }))}
-          loadingPriceGroups={loadingPriceGroups}
+          loadingPriceGroups={loading}
           onClose={handleCloseDialog}
           onSubmit={handleSubmit}
           onFormDataChange={handleFormDataChange}

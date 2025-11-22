@@ -19,7 +19,8 @@ import {
   Warning as WarningIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
-import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
+import { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
+import StandardDataGrid from '../common/StandardDataGrid';
 import { OutstandingSale } from '../../interfaces/business';
 import { formatCurrency, formatDate, getPaymentStatusColor, getPaymentStatusLabel } from '../../utils/treasuryUtils';
 
@@ -218,10 +219,12 @@ export const OutstandingSalesCard: React.FC<OutstandingSalesCardProps> = ({
           </Box>
         ) : (
           <Box sx={{ height: 450, width: '100%' }}>
-            <DataGrid
+            <StandardDataGrid
               rows={sales}
               columns={columns}
               loading={loading}
+              showToolbar={true}
+              exportFileName="ventes_en_attente"
               initialState={{
                 pagination: {
                   paginationModel: { pageSize: 5, page: 0 }

@@ -15,7 +15,8 @@ import {
   IconButton,
   Tooltip
 } from '@mui/material';
-import { DataGrid, GridColDef, GridRenderCellParams, GridToolbar } from '@mui/x-data-grid';
+import { GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
+import StandardDataGrid from '../common/StandardDataGrid';
 import MoneyOffIcon from '@mui/icons-material/MoneyOff';
 import PrintIcon from '@mui/icons-material/Print';
 import { 
@@ -354,9 +355,11 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
       }}>
         {activeTab === 0 && showJournalCaisse ? (
           // Journal Caisse
-          <DataGrid
+          <StandardDataGrid
             rows={journalData}
             columns={journalColumns}
+            showToolbar={true}
+            exportFileName="journal_caisse"
             getRowClassName={(params) => 
               params.indexRelativeToCurrentPage % 2 === 0 ? '' : 'even-row'
             } 
@@ -370,13 +373,6 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             }} 
             density="compact" 
             disableRowSelectionOnClick 
-            slots={{ toolbar: GridToolbar }} 
-            slotProps={{ 
-              toolbar: { 
-                showQuickFilter: true, 
-                quickFilterProps: { debounceMs: 300 } 
-              } 
-            }} 
             sx={{ 
               border: 'none', 
               '& .MuiDataGrid-cell:focus': { 
@@ -394,9 +390,11 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
           />
         ) : (
           // Historique des transactions
-          <DataGrid
+          <StandardDataGrid
             rows={historyData}
             columns={historyColumns}
+            showToolbar={true}
+            exportFileName={`historique_transactions_${mode}`}
             getRowClassName={(params) => 
               params.indexRelativeToCurrentPage % 2 === 0 ? '' : 'even-row'
             } 
@@ -410,13 +408,6 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             }} 
             density="compact" 
             disableRowSelectionOnClick 
-            slots={{ toolbar: GridToolbar }} 
-            slotProps={{ 
-              toolbar: { 
-                showQuickFilter: true, 
-                quickFilterProps: { debounceMs: 300 } 
-              } 
-            }} 
             sx={{ 
               border: 'none', 
               '& .MuiDataGrid-cell:focus': { 

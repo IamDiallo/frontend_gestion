@@ -53,6 +53,7 @@ export interface StockSupplyItem {
   total_price: number; // Add total price
   // Add other fields if they exist in your backend response (e.g., product_name)
   product_name?: string;
+  unit_symbol?: string;
 }
 
 export interface StockSupply {

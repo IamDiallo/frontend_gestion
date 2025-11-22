@@ -90,7 +90,7 @@ export const InventoryDialogManager: React.FC<InventoryDialogManagerProps> = ({
     validateForm,
     getFormDataForSubmit,
   } = dialog;
-  
+  console.log("dialogFormData:", dialogFormData);
   // ============================================================================
   // STATE
   // ============================================================================
@@ -599,6 +599,7 @@ export const InventoryDialogManager: React.FC<InventoryDialogManagerProps> = ({
                       <TableCell align="right">
                         {dialogOperation === 'inventory' ? 'Quantité comptée' : 'Quantité'}
                       </TableCell>
+                      <TableCell align="center">Unité</TableCell>
                       {dialogOperation === 'supply' && (
                         <>
                           <TableCell align="right">Prix Unitaire</TableCell>
@@ -609,29 +610,37 @@ export const InventoryDialogManager: React.FC<InventoryDialogManagerProps> = ({
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {dialogFormData.items.map((item, index) => (
-                      <TableRow key={index}>
-                        <TableCell>{getProductName(item.product)}</TableCell>
-                        <TableCell align="right">{Number(item.quantity) || 0}</TableCell>
-                        {dialogOperation === 'supply' && (
-                          <>
-                            <TableCell align="right">{formatCurrency(Number(item.unit_price) || 0)}</TableCell>
-                            <TableCell align="right">{formatCurrency(Number(item.total_price) || 0)}</TableCell>
-                          </>
-                        )}
-                        <TableCell align="right">
-                          {!isViewMode && (
-                          <IconButton 
-                            size="small" 
-                            color="error" 
-                            onClick={() => removeItem(index)}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                    {dialogFormData.items.map((item, index) => {
+                      const unitSymbol = item.unit_symbol || '';
+                      return (
+                        <TableRow key={index}>
+                          <TableCell>{getProductName(item.product)}</TableCell>
+                          <TableCell align="right">{Number(item.quantity) || 0}</TableCell>
+                          <TableCell align="center">
+                            <Typography variant="body2" sx={{ fontWeight: 500, color: 'primary.main' }}>
+                              {unitSymbol}
+                            </Typography>
+                          </TableCell>
+                          {dialogOperation === 'supply' && (
+                            <>
+                              <TableCell align="right">{formatCurrency(Number(item.unit_price) || 0)}</TableCell>
+                              <TableCell align="right">{formatCurrency(Number(item.total_price) || 0)}</TableCell>
+                            </>
                           )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          <TableCell align="right">
+                            {!isViewMode && (
+                            <IconButton 
+                              size="small" 
+                              color="error" 
+                              onClick={() => removeItem(index)}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                     {/* Totals row */}
                     <TableRow>
                       <TableCell sx={{ fontWeight: 'bold' }}>
@@ -639,6 +648,9 @@ export const InventoryDialogManager: React.FC<InventoryDialogManagerProps> = ({
                       </TableCell>
                       <TableCell align="right" sx={{ fontWeight: 'bold' }}>
                         {dialogFormData.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)}
+                      </TableCell>
+                      <TableCell align="center">
+                        {/* Empty cell for unit column */}
                       </TableCell>
                       {dialogOperation === 'supply' && (
                         <>

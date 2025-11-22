@@ -117,24 +117,40 @@ export const InventoriesTab: React.FC<InventoriesTabProps> = ({
     {
       field: 'variance',
       headerName: 'Écart',
-      width: 120,
+      width: 180,
       renderCell: (params) => {
         const items = params.row.items || [];
-        const totalVariance = items.reduce((sum: number, item: { expected_quantity: number; actual_quantity: number }) => {
-          const variance = calculateVariance(item.expected_quantity, item.actual_quantity);
-          return sum + variance;
-        }, 0);
+        
+        // Group items by unit to display variance with units
+        const varianceByUnit: Record<string, number> = {};
+        
+        items.forEach((item: { expected_quantity: number; actual_quantity: number; unit_symbol?: string }) => {
+          // Écart = Quantité Réelle - Quantité Attendue
+          const variance = calculateVariance(item.actual_quantity, item.expected_quantity);
+          const unit = item.unit_symbol || '';
+          
+          if (!varianceByUnit[unit]) {
+            varianceByUnit[unit] = 0;
+          }
+          varianceByUnit[unit] += variance;
+        });
         
         return (
-          <Typography
-            sx={{
-              fontWeight: 500,
-              color: totalVariance === 0 ? 'success.main' : 
-                     totalVariance < 0 ? 'error.main' : 'warning.main'
-            }}
-          >
-            {totalVariance > 0 ? '+' : ''}{totalVariance}
-          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            {Object.entries(varianceByUnit).map(([unit, variance]) => (
+              <Typography
+                key={unit}
+                sx={{
+                  fontWeight: 500,
+                  fontSize: '0.875rem',
+                  color: variance === 0 ? 'success.main' : 
+                         variance < 0 ? 'error.main' : 'warning.main'
+                }}
+              >
+                {variance > 0 ? '+' : ''}{variance} {unit}
+              </Typography>
+            ))}
+          </Box>
         );
       },
     },
@@ -292,6 +308,7 @@ export const InventoriesTab: React.FC<InventoriesTabProps> = ({
           columns={columns}
           loading={loading}
           showToolbar 
+          exportFileName="inventaires"
           onRowDoubleClick={(params) => onEdit(params.row)}
           initialState={{
             sorting: {

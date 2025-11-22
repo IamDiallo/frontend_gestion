@@ -90,6 +90,16 @@ export const logout = () => {
   localStorage.removeItem('user_role');
   localStorage.removeItem('is_admin');
   localStorage.removeItem('current_user');
+  localStorage.removeItem('user_groups');
+  localStorage.removeItem('permissions_fetch_time');
+  localStorage.removeItem(USER_CACHE_KEY);
+  localStorage.removeItem(USER_CACHE_TIME_KEY);
+  // Clear zones cache
+  localStorage.removeItem('zones_cache');
+  localStorage.removeItem('zones_cache_time');
+  // Clear products cache
+  localStorage.removeItem('products_cache');
+  localStorage.removeItem('products_cache_time');
 };
 
 /**
@@ -135,22 +145,54 @@ export const refreshToken = async (refreshToken: string): Promise<string> => {
 };
 
 /**
- * Get current user data
+ * Get current user data with caching
  */
-export const getCurrentUser = async () => {
+const USER_CACHE_KEY = 'current_user_cache';
+const USER_CACHE_TIME_KEY = 'current_user_cache_time';
+const USER_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+export const getCurrentUser = async (forceRefresh = false) => {
   try {
     const token = localStorage.getItem('access_token');
     if (!token) {
       throw new Error('No access token found');
     }
     
+    // Check cache first
+    if (!forceRefresh) {
+      const cachedData = localStorage.getItem(USER_CACHE_KEY);
+      const cachedTime = localStorage.getItem(USER_CACHE_TIME_KEY);
+      
+      if (cachedData && cachedTime) {
+        const age = Date.now() - parseInt(cachedTime, 10);
+        if (age < USER_CACHE_DURATION) {
+          console.log('✅ Using cached user data (fresh for', Math.round((USER_CACHE_DURATION - age) / 1000), 'more seconds)');
+          return JSON.parse(cachedData);
+        }
+      }
+    }
+    
+    console.log('🔄 Fetching fresh user data from server...');
     debugAPI.logRequest('/core/users/me/', 'GET');
     const response = await api.get('/core/users/me/');
     debugAPI.logResponse('/core/users/me/', response);
+    
+    // Cache the response
+    localStorage.setItem(USER_CACHE_KEY, JSON.stringify(response.data));
+    localStorage.setItem(USER_CACHE_TIME_KEY, Date.now().toString());
+    
     return response.data;
   } catch (error) {
     debugAPI.logError('/core/users/me/', error);
     console.error('Error fetching current user:', error);
+    
+    // Try to return cached data even if expired
+    const cachedData = localStorage.getItem(USER_CACHE_KEY);
+    if (cachedData) {
+      console.log('⚠️ Using expired cache due to error');
+      return JSON.parse(cachedData);
+    }
+    
     throw error;
   }
 };

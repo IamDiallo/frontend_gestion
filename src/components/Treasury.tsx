@@ -61,6 +61,7 @@ const Treasury: React.FC = () => {
   const { enqueueSnackbar } = useSnackbar();
   const theme = useTheme();
   const [currentTab, setCurrentTab] = useState(0);
+  const [loadedTabs, setLoadedTabs] = useState<Set<number>>(new Set([0])); // Track loaded tabs
   
   // State for balance change animation
   const [previousBalance, setPreviousBalance] = useState<number | null>(null);
@@ -99,7 +100,10 @@ const Treasury: React.FC = () => {
     createClientDeposit,
     createClientPayment,
     createSupplierPayment,
-    refreshAllData
+    fetchClients,
+    fetchSuppliers,
+    fetchAccounts,
+    fetchResources
   } = useTreasuryData();
 
   // Gestion des dialogues (modals, forms)
@@ -155,11 +159,56 @@ const Treasury: React.FC = () => {
   // EFFECTS
   // =============================================================================
 
-  // Chargement initial des données
+  // Chargement initial des données - essentielles uniquement
   useEffect(() => {
-    refreshAllData();
+    const loadInitialData = async () => {
+      try {
+        // Load basic data needed for all tabs
+        await Promise.all([
+          fetchClients(),
+          fetchSuppliers(),
+          fetchAccounts(),
+          fetchResources()
+        ]);
+      } catch (error) {
+        console.error('Error loading initial data:', error);
+      }
+    };
+    
+    loadInitialData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Lazy load tab-specific data when tab changes
+  useEffect(() => {
+    if (loadedTabs.has(currentTab)) return; // Already loaded
+    
+    const loadTabData = async () => {
+      try {
+        switch (currentTab) {
+          case 0: // Clients
+            if (!selectedClient) {
+              await getAllClientTransactions();
+            }
+            break;
+          case 1: // Fournisseurs
+            if (!selectedSupplier) {
+              await getAllSupplierTransactions();
+            }
+            break;
+          case 2: // Comptes
+            // Account movements loaded on demand when account is selected
+            break;
+        }
+        setLoadedTabs(prev => new Set(prev).add(currentTab));
+      } catch (error) {
+        console.error(`Error loading data for tab ${currentTab}:`, error);
+      }
+    };
+    
+    loadTabData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTab]);
 
   // Debug: Logger les données chargées
   useEffect(() => {

@@ -323,6 +323,7 @@ const SalesTab: React.FC<SalesTabProps> = ({
           getRowId={(row) => row?.id ?? Math.random()}
           onRowClick={(params) => onEdit(params.row)}
           showToolbar
+          exportFileName="ventes"
         />
       )}
     </Box>

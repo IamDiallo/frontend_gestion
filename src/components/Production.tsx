@@ -28,6 +28,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Search as SearchIcon,
+  Factory as FactoryIcon,
 } from '@mui/icons-material';
 import { ProductionAPI, InventoryAPI, CoreAPI } from '../services/api/index';
 import { Production } from '../interfaces/production';
@@ -95,16 +96,15 @@ const ProductionComponent = () => {
       setLoading(true);
       setError(null);
       
-      // Fetch productions
-      const productionsData = await ProductionAPI.fetchProductions();
+      // Load all data in parallel for better performance
+      const [productionsData, productsData, zonesData] = await Promise.all([
+        ProductionAPI.fetchProductions(),
+        InventoryAPI.fetchProducts(),
+        CoreAPI.fetchZones()
+      ]);
+      
       setProductions(productionsData);
-      
-      // Fetch products for the dropdown
-      const productsData = await InventoryAPI.fetchProducts();
       setProducts(productsData);
-      
-      // Fetch zones from backend
-      const zonesData = await CoreAPI.fetchZones();
       setZones(zonesData);
     } catch (err) {
       console.error('Error loading data:', err);
@@ -250,7 +250,23 @@ const ProductionComponent = () => {
           }}
         >
           <Box>
-            <Typography variant="h4" component="h1" gutterBottom>
+            <Typography 
+              variant="h4" 
+              component="h1" 
+              gutterBottom
+              sx={{ 
+                fontWeight: 700, 
+                color: 'primary.main',
+                borderBottom: '2px solid',
+                borderColor: 'primary.light',
+                pb: 1,
+                width: 'fit-content',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1
+              }}
+            >
+              <FactoryIcon />
               Gestion de la Production
             </Typography>
             <Typography variant="body1" color="text.secondary">
@@ -449,6 +465,8 @@ const ProductionComponent = () => {
               onPaginationModelChange={setPaginationModel}
               onRowClick={handleRowClick}
               loading={loading}
+              showToolbar
+              exportFileName="productions"
               getRowId={(row) => {
                 if (!row || row.id === undefined) return Math.random();
                 return row.id;
